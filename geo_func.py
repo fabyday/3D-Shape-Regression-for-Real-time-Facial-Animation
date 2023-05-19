@@ -92,7 +92,12 @@ def similarity_transform(A, B):
 
 
 
-    # return B.T @ np.linalg.inv(A.T@A)
 
 
-    
+
+def similarity_transform2(A, B):
+    """
+    A to B scale, rot matrix. least square.
+    R @ A  = B
+    """
+    return B.T @ A @ np.linalg.inv(A.T@A)

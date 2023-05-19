@@ -25,7 +25,18 @@ def test_similarity(A, B):
     print("=======")
     print(B)
     print((scale_t*rot_t@B.T ).T)
+def test_similarity2(A, B):
+    rot_t = geo_func.similarity_transform2(A,B)
+    print(rot_t == truth_rot)
+    print(rot_t == scale*truth_rot)
+    print("truyt rot", scale*truth_rot, " gen rot \n", rot_t)
+
+    print("A\n", A)
+    print("RA\n",(rot_t@A.T).T)
+    print("=======")
+    print("B\n", B)
 
 
 
-test_similarity(truth, test_input)
+# test_similarity(truth, test_input)
+test_similarity2(truth, test_input)
