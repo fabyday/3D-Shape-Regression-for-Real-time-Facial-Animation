@@ -22,13 +22,44 @@ def roll(rad):
     rot[1, 1] = np.cos(rad); rot[1,2] = -np.sin(rad)
     rot[2, 1] = np.sin(rad); rot[2,2] = np.cos(rad)
 
+    return rot 
+
+
+
+
+def grad_pitch(rad):
+    rot = np.identity(4)
+    rot[1,1] = -np.sin(rad); rot[1,2] = -np.cos(rad)
+    rot[2,1] = np.cos(rad); rot[2,2] = -np.sin(rad)
+    return rot
+
+def grad_yaw(rad):
+    rot = np.identity(4)
+    rot[0,0] = -np.sin(rad); rot[0,2] = np.cos(rad)
+    rot[2,0] = -np.cos(rad); rot[2,2] = -np.sin(rad)
+    return rot
+
+def grad_roll(rad):
+    rot = np.identity(4)
+    rot[1, 1] = -np.sin(rad); rot[1,2] = -np.cos(rad)
+    rot[2, 1] = np.cos(rad); rot[2,2] = -np.sin(rad)
+    return rot 
+
+
+
+
 
 
 
 def Euler_PYR(p,y,r):
     return pitch(p)@yaw(y)@roll(r)
 
-
+def grad_Euler_PYR(p,y,r):
+    return (\
+            grad_pitch(p)@yaw(y)@roll(r)+\
+            pitch(p)@grad_yaw(y)@roll(r)+\
+            pitch(p)@yaw(y)@grad_roll(r)\
+            )
 
 
 def projection(shape, bbox):
