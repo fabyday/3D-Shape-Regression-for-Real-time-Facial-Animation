@@ -4,7 +4,7 @@ import os.path as osp
 import numpy as np 
 import geo_func as geo 
 
-
+import scipy.optimize as opt
 
 class PreProp:
     def __init__(self, data_dir):
@@ -49,10 +49,49 @@ class PreProp:
             return np.linalg.norm(crd_2d - b)
 
         num_ids = len(sel_exp)//len(sel_ids)
-        
-        A = sel_exp*num_ids
-        
 
+        A = sel_exp*num_ids
+        def object_function(x, w_i, w_e, rot):
+            # x 3xn or 4xn
+            rotated_x = rot@x
+            id_num = len(w_i)
+            total_exp_elem_num = len(w_e)
+            exp_num = total_exp_elem_num//id_num
+            for i in range(id_num):
+                w_e[i:(i+1)*exp_num, :] *= w_i(i)
+            result = rotated_x @ w_e
+
+        lmks_2d
+        def jac(w):
+            w_i = w[ : len(id_weight)]
+            w_e = w[len(id_weight) : len(exp_weight)]
+            rot = w[len(exp_weight) : ]
+            delta = 0.0001
+            result = np.zeros((3, len(w_i)+len(w_e)+len(rot)))
+            for i in range(len(w_i)):
+                w_i[i] += delta
+                tmp = object_function(lmks_2d, w_i, w_e, rot)
+                result[:, i] = tmp
+                w_i[i] -= delta
+            for i in range(len(w_e)):
+                w_e[i] += delta
+                tmp = object_function(lmks_2d, w_i, w_e, rot)
+                result[:, len(w_i)+i] = tmp
+                w_e[i] -= delta 
+            for i in range(rot):
+                rot[i] += delta
+                tmp = object_function(lmks_2d, w_i, w_e, rot)
+                result[:, len(w_i)+len(w_e)+i] = tmp
+                rot[i] -= delta
+
+        def wrap_obj(w):
+            w_i = w[ : len(id_weight)]
+            w_e = w[len(id_weight) : len(exp_weight)]
+            rot = w[len(exp_weight) : ]
+            lmks_2d
+            return object_function(lmks_2d, w_i, w_e, rot)
+        
+        opt.minimize(fun = wrap_obj, x0 = 0 , method="L-BFGS-B", jac = jac)
 
         
         b  = lmks_2d.reshape(-1, 1)
