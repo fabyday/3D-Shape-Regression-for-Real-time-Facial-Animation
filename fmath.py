@@ -6,3 +6,8 @@ def normalize(x):
     std = np.std(x, 0)
     normalized_x = (x - mean)/std
     return normalized_x, mean, std
+
+
+
+
+def 

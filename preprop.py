@@ -40,19 +40,18 @@ class PreProp:
         pass
 
     def _shape_fit(self, lmks_2d, sel_ids, sel_exp):
+
         id_weight = np.zeros((len(sel_ids), 1)) # Identity
         exp_weight = np.zeros((len(sel_exp), 1)) # Identity X Expression
-
-        def loss(x, A, b):
-            crd_3d = A@x
-            crd_2d = self.rigid_trans @ crd_3d
-            return np.linalg.norm(crd_2d - b)
 
         num_ids = len(sel_exp)//len(sel_ids)
 
         A = sel_exp*num_ids
         def object_function(x, w_i, w_e, rot):
             # x 3xn or 4xn
+
+
+
             rotated_x = rot@x
             id_num = len(w_i)
             total_exp_elem_num = len(w_e)
@@ -61,7 +60,7 @@ class PreProp:
                 w_e[i:(i+1)*exp_num, :] *= w_i(i)
             result = rotated_x @ w_e
 
-        lmks_2d
+        
         def jac(w):
             w_i = w[ : len(id_weight)]
             w_e = w[len(id_weight) : len(exp_weight)]
@@ -105,4 +104,5 @@ class PreProp:
 
 
         
-        self.build
+if __name__ == "__main__":
+    pass
