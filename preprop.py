@@ -3,24 +3,64 @@ import cv2, glob, os
 import os.path as osp
 import numpy as np 
 import geo_func as geo 
-
+import igl 
 import scipy.optimize as opt
+def atof(text):
+        try:
+            retval = float(text)
+        except ValueError:
+            retval = text
+        return retval
+
+def natural_keys(text):
+    '''
+    alist.sort(key=natural_keys) sorts in human order
+    http://nedbatchelder.com/blog/200712/human_sorting.html
+    (See Toothy's implementation in the comments)
+    float regex comes from https://stackoverflow.com/a/12643073/190597
+    '''
+    return [ atof(c) for c in re.split(r'[+-]?([0-9]+(?:[.][0-9]*)?|[.][0-9]+)', text) ]
 
 class PreProp:
-    def __init__(self, data_dir):
+    def __init__(self, data_dir, img_dir):
         
         self.proj = np.identity(4)
         self.rigid_trans = np.identity(4)
         self.data_dir = data_dir
+        self.img_dir = img_dir
 
 
 
-    def build(self, id_meshes, exp_meshes, mesh_lmk_indices):
+    def build(self):
         imgs, lmks_2d = self.load_data()
+        meshes = self.load_mesh()
+
+    def load_mesh(self):
+        root_dir = self.img_dir
+
+        identity_mesh_name = glob.glob(osp.join(root_dir, "**.obj"))
+        identity_mesh_name.sort(key= natural_keys)
+
+        self.meshes = []
+        for id_file_path in identity_mesh_name:
+            mesh_collect = []
+            id_name = osp.basename(id_file_path)
+            
+            v, f = igl.read_triangle_mesh(id_file_path)
+            mesh_collect.append(v)
+            expr_paths = glob.glob(osp.join(root_dir, "shapes", id_name, "**.obj"))
+            expr_paths.sort(key= natural_keys)
+            for expr_path in expr_paths:
+                v, f = igl.read_triangle_mesh(expr_path)
+                mesh_collect.append(v)
+
+            
+
+
 
     def load_data(self):
         extension = [".jpeg", ".png", ".jpg"]
-        lmk_data_files = glob.glob(osp.join(self.data_dir, "/**.txt"))
+        lmk_data_files = glob.glob(osp.join(self.data_dir, "**.txt"))
         img_data_files = [glob.glob(osp.join(self.data_dir, ext)) for ext in extension]
 
         self.images = []
@@ -50,7 +90,7 @@ class PreProp:
         def object_function(x, w_i, w_e, rot):
             # x 3xn or 4xn
 
-
+  
 
             rotated_x = rot@x
             id_num = len(w_i)
@@ -100,9 +140,68 @@ class PreProp:
         self.a = 0.01
 
 
+        def simple_camera_calibration(nuetral_img, lmks, neutral_mesh):
+            # neutral_mesh vertice mapped to lmk
 
+            w, h = nuetral_img.shape
+            u0 = w/2
+            v0 = h/2
+
+            A = np.zeros((68*2,9))
+
+            for i, v, lmk in enumerate(zip(neutral_mesh, lmks)):
+                A[2*i,:2] = v[:2]
+                A[2*i, 2] = 1
+                A[2*i, -3:-1] = -lmk[0]*v[:2]
+                A[2*i, -1] = -lmk[0]*1
+                
+                A[2*i + 1,:2] = v[:2]
+                A[2*i + 1, 2] = 1
+                A[2*i + 1, -3:-1] = -lmk[1]*v[:2]
+                A[2*i + 1, -1] = -lmk[1]*1
+
+            s, v, vh = np.linalg.svd(A)
+            a = vh[:, 0]
+            H = a.reshape(3,3)
+            
+
+            def V(H, i, j):
+                h1 = H[:,0]
+                h2 = H[:,1]
+
+                v12 = np.array([ [h1[1]*h2[1]] , 
+                            [h1[1]*h2[2] + h1[2]*h2[1]] ,
+                            [h1[3]*h2[1] + h1[1]*h2[3]], 
+                            [h1[2]*h2[2]], 
+                            [h1[3]*h2[2] + h1[2]*h2[3]], 
+                            [h1[3]*h2[3]]
+                            ])
+            v12 = V(H, 1,2)
+            v11_22 = V(H, 1,1) - V(H, 2,2)
+            VV = np.vstack(v12, v11_22)
+            s,v, vh = np.linalg.svd(VV)
+            b = vh[:, 0]
+
+
+            b_mat = np.array([[b[0], b[1], b[2]],
+                                [b[1], b[3], b[4]],
+                                [b[2], [4],b[5]]
+                              ])
+            
+            K = np.linalg.cholesky(b_mat)
+            
+
+
+            proj = []
+            cam_param = []
+
+
+            
 
 
         
 if __name__ == "__main__":
-    pass
+
+    p = PreProp("images", "prep_data")
+    p.load_data()
+    p.build()
