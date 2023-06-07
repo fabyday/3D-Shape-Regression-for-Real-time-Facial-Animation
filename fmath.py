@@ -7,7 +7,3 @@ def normalize(x):
     normalized_x = (x - mean)/std
     return normalized_x, mean, std
 
-
-
-
-def 

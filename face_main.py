@@ -14,14 +14,15 @@ import os.path as osp
 
 
 
-def save_lmk(path, lmks):
+def save_lmk(path, lmk):
     root_path = osp.dirname(path)
+    print("root", root_path)
     if not osp.exists(root_path):
         os.makedirs(root_path)
-    with open(path) as fp:
-        lmk_len = len(lmks)
-        for i, lmk in enumerate(lmks):
-            fp.write(str(lmk[0])+" "+str(lmk[1]))
+    with open(path, 'w') as fp:
+        lmk_len = len(lmk)
+        for i, coord in enumerate(lmk):
+            fp.write(str(coord[0])+" "+str(coord[1]))
             if not (lmk_len - 1 == i):
                 fp.write("\n")
         
@@ -31,6 +32,8 @@ x1, y1 = (-1, -1)
 # cliped or nerest
 mode = "nearest"
 move = False
+
+is_moved_point = False
 
 sel_v_idx_list = []
 sel_rect = [-1,-1,-1,-1]
@@ -62,7 +65,7 @@ def find_v_in_nearest_area(x,y, eps = 1.5):
 
 
 def mouse_event(event, x, y, flags, param):
-    global x1, y1, sel_rect, sel_v_idx_list, click, move, lmks, index, img_scale_factor, img_scale_factor_changed
+    global x1, y1, sel_rect, sel_v_idx_list, click, move, lmks, index, img_scale_factor, img_scale_factor_changed, is_moved_point
     if event == cv2.EVENT_LBUTTONDOWN:                      
         click = True 
         x1, y1 = x,y
@@ -74,6 +77,7 @@ def mouse_event(event, x, y, flags, param):
             for idx in sel_v_idx_list:
                 lmks[index][idx][0] += m_vec_x 
                 lmks[index][idx][1] += m_vec_y
+            is_moved_point = True
     elif event == cv2.EVENT_LBUTTONUP:
         click = False 
         if mode == "cliped":
@@ -110,12 +114,14 @@ img_size = 100
 
 index = 0
 images = []
+images_name = []
 lmks = []
 
 
 ext_type = [".png", ".jpeg", ".jpg"]
 for ext in ext_type:
     img_names = glob.glob(osp.join(img_path, "**"+ext))
+    images_name += img_names
     for img_name in img_names:
         img = cv2.imread(img_name)
         images.append(img)
@@ -129,7 +135,7 @@ while True:
     img_orig = cv2.cvtColor(images[index], cv2.COLOR_RGB2BGR)
     height, width = img_orig.shape[0], img_orig.shape[1]
     img = cv2.resize(img_orig, (int(width*img_scale_factor), int(height*img_scale_factor)), interpolation=cv2.INTER_LINEAR)
-    if len(lmks[index]) == 0 :
+    if len(lmks[index]) == 0  :
         rects = detector(img, 1)
         for i, rect in enumerate(rects):
             l = rect.left()
@@ -141,12 +147,13 @@ while True:
                 x, y = shape.part(j).x, shape.part(j).y
                 lmks[index].append([x,y])
             lmks_copy = copy.deepcopy(lmks)
-            
+
+
     
     if img_scale_factor_changed:
         for i, lmk in enumerate(lmks[index]):
-            lmk[0]=int(lmks_copy[index][i][0]*img_scale_factor)
-            lmk[1]=int(lmks_copy[index][i][1]*img_scale_factor)
+            lmk[0]=(lmks_copy[index][i][0]*img_scale_factor)
+            lmk[1]=(lmks_copy[index][i][1]*img_scale_factor)
         img_scale_factor_changed = False
 
 
@@ -162,7 +169,15 @@ while True:
         if index < 0:
             index = img_size - 1
     elif key == ord("s"): # save current images.
-        pass
+        rescaled_lmks = copy.deepcopy(lmks_copy[index])
+        save_img = copy.deepcopy(img_orig)
+        for i, lmk in enumerate(rescaled_lmks):
+            # rescaled_lmks[i][0] = lmk[0] / img_scale_factor
+            # rescaled_lmks[i][1] = lmk[1] / img_scale_factor
+            cv2.circle(save_img, (int(rescaled_lmks[i][0]), int(rescaled_lmks[i][1])), 1, (255,0,0), int(10))
+        save_lmk(osp.join("./lmks/", osp.splitext(osp.basename( images_name[index]))[0]+".txt"),lmks[index])
+        cv2.imwrite(osp.join("./lmks/", osp.basename( images_name[index])),save_img)
+        
     elif key == ord("r"): # move true
         move = not move
 
@@ -171,8 +186,15 @@ while True:
         color = (0,255,0)
         if j in sel_v_idx_list:
             color = (255,0,0)
-        cv2.circle(img, (x, y), 1, color, int(10*img_scale_factor))
+        cv2.circle(img, (int(x), int(y)), 1, color, int(10*img_scale_factor))
 
+    vvl = [idx  for idx in sel_v_idx_list if idx != -1]
+    if is_moved_point:
+        for i in vvl:
+            print(lmks_copy[index][i][0], " ", lmks[index][i][0], " ", lmks[index][i][0]/img_scale_factor)
+            lmks_copy[index][i][0]=(lmks[index][i][0]/img_scale_factor)
+            lmks_copy[index][i][1]=(lmks[index][i][1]/img_scale_factor)
+        is_moved_point = False
     if not sel_rect == [-1, -1, -1, -1]:
         cv2.rectangle(img, sel_rect[:2], sel_rect[2:], color=(255,255,0), thickness=int(10*img_scale_factor))
     cv2.imshow('mod', img)
