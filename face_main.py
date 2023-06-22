@@ -156,7 +156,7 @@ while True:
             lmk[1]=(lmks_copy[index][i][1]*img_scale_factor)
         img_scale_factor_changed = False
 
-
+    
     key = cv2.waitKey(1)
     if key == ord('q'): #quit
         break
@@ -175,7 +175,7 @@ while True:
             # rescaled_lmks[i][0] = lmk[0] / img_scale_factor
             # rescaled_lmks[i][1] = lmk[1] / img_scale_factor
             cv2.circle(save_img, (int(rescaled_lmks[i][0]), int(rescaled_lmks[i][1])), 1, (255,0,0), int(10))
-        save_lmk(osp.join("./lmks/", osp.splitext(osp.basename( images_name[index]))[0]+".txt"),lmks[index])
+        save_lmk(osp.join("./lmks/", osp.splitext(osp.basename( images_name[index]))[0]+".txt"),rescaled_lmks)
         cv2.imwrite(osp.join("./lmks/", osp.basename( images_name[index])),save_img)
         
     elif key == ord("r"): # move true

@@ -187,20 +187,31 @@ class PreProp:
         def object_function(y, ws):
             w_i = ws[:id_size]
             w_e = ws[id_size:id_size+id_size*expr_size]
-            cam_params = ws[id_size+id_size*expr_size:]
-            cam_rotation = cam_params[:3, :]
+            cam_params = ws[id_size+id_size*expr_size:-1]
+            scale = ws[-1]
+            # cam_rotation = cam_params[:3, :]
             cam_translate = cam_params[3:, :]
             cam_mtx = geo.Euler_PYR(cam_params[0,0],cam_params[1,0],cam_params[2,0])[:3, :3]
             # x 3xn or 4xn
-            tmp= ids_flatten + expr_flatten@w_e
-            tmp  = tmp @ w_i
+            # tmp= ids_flatten@w_i + expr_flatten@w_e
+
+            size_t = len(w_e)//len(w_i)
+            tmp = np.zeros((ids_flatten.shape[0],1))
+            for i in range(len(w_i)):
+                tmpo = expr_flatten[:, size_t*i:size_t*(i+1)]@w_e[size_t*i:size_t*(i+1),:]
+                tmp += (tmpo+ids_flatten[:, i, None])*w_i[i, 0]
+
+            # tmp= ids_flatten@ + expr_flatten@w_e
+            # tmp  = tmp @ w_i
             tmp = tmp.reshape(-1 , 3)
-            tmp = cam_mtx @ tmp.T + cam_translate
+            # tmp = tmp.reshape(-1 , 3)
+            # tmp = cam_mtx @ tmp.T + cam_translate
+            tmp = scale*(cam_mtx @ tmp.T + cam_translate)
             tmp = Q@tmp
             tmp = tmp.T
             tmp /= tmp[:, -1, np.newaxis]
             tmp = (np.squeeze(y) - tmp[:,:-1])
-            result = np.sum(np.power(tmp, 2))
+            result = np.sum(np.power(tmp, 2)) + (ws.T@ws)[0,0]
             return result 
         
 
@@ -239,15 +250,19 @@ class PreProp:
             a = object_function(y, w )
             w[i,0] += eps
             b = object_function(y, w )
+            
+            w[i,0] -= eps
+            print((a-b), ": ", (a-b)/eps)
             return (a - b) / eps
             
 
         def coordinate_descent(obj, y, wi, we, cam_params, alpha =0.03):
-            thetas = np.vstack([wi, we, cam_params])
+            thetas = np.vstack([wi, we, cam_params, np.array([[1.0]])])
             print("start cost : ", object_function(y,thetas ))
-            for i in range(param_length):
-                thetas[i] = thetas[i]  - alpha * coord_gradient(y,thetas, i )
-                print(object_function(y,thetas ))
+            for i in range(20):
+                for i in range(len(thetas)):
+                    thetas[i] = thetas[i]  - alpha * coord_gradient(y,thetas, i )
+                    print(object_function(y,thetas ))
             return thetas
         
         
