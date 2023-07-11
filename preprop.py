@@ -121,6 +121,7 @@ class PreProp:
             id_name = osp.basename(id_file_path)
             
             v, f = igl.read_triangle_mesh(id_file_path)
+            self.ref_f = f
             mesh_collect.append(v)
             expr_paths = glob.glob(osp.join(root_dir, "shapes", osp.splitext(id_name)[0], "**.obj"))
             expr_paths.sort(key= natural_keys)
@@ -165,14 +166,24 @@ class PreProp:
     def shape_fit(self, lmks_2d, meshes, lmk_idx):
         Q = clib.calibrate('./images/checker4/*.jpg')
 
+
         ids = np.array( [m[0] for m  in meshes])
+        neutral_id = np.mean(ids, axis=0, keepdims=True)
+        neutral_id_bar = neutral_id[..., lmk_idx, : ]
         r,c = meshes[0][0].shape
         ids = ids.reshape(-1, 1, r, c)
-        ids_bar = ids[..., lmk_idx, :]
+        ids_bar = ids[..., lmk_idx, :] - neutral_id_bar
         _, _, new_r, new_c = ids_bar.shape
         exps = np.array([m[1:] for m  in meshes])
-        expr_bar = exps[..., lmk_idx, :] - ids_bar
-        id_size, expr_size, _, _ =expr_bar.shape
+        id_size, exp_size, exp_r, exp_c = exps.shape
+        neutral_exp = np.mean(exps.reshape(-1, exp_r, exp_c), axis=0)
+        neutral_exp_bar = neutral_exp.reshape(1, 1, exp_r, exp_c)[..., lmk_idx, :]
+        # neutral_exp_bar -= neutral_id_bar
+        expr_bar = exps[..., lmk_idx, :]  - neutral_exp_bar
+        # expr_bar = exps[..., lmk_idx, :] - neutral_id_bar
+        neutral_exp_bar -= neutral_id_bar
+
+        id_size, expr_size, _, _ = expr_bar.shape
         lmks_2d = np.array(lmks_2d)
 
         A = id_size*expr_size
@@ -185,6 +196,7 @@ class PreProp:
         expr_flatten = expr_bar.reshape(-1, new_r*new_c).T
         cam_params = np.zeros((3+3, 1)) # rot axis by 3, translation by 3
         def object_function(y, ws):
+            nonlocal neutral_id_bar
             w_i = ws[:id_size]
             w_e = ws[id_size:id_size+id_size*expr_size]
             cam_params = ws[id_size+id_size*expr_size:-1]
@@ -197,13 +209,27 @@ class PreProp:
 
             size_t = len(w_e)//len(w_i)
             tmp = np.zeros((ids_flatten.shape[0],1))
-            for i in range(len(w_i)):
-                tmpo = expr_flatten[:, size_t*i:size_t*(i+1)]@w_e[size_t*i:size_t*(i+1),:]
-                tmp += (tmpo+ids_flatten[:, i, None])*w_i[i, 0]
+            neutral_id_bar_flat = neutral_id_bar.reshape( -1, 1)
+            neutral_exp_bar_flat = neutral_exp_bar.reshape(-1,1)
+            data_mean = neutral_exp_bar_flat + neutral_id_bar_flat
+            # for i in range(len(w_i)):
+                # tmpo = expr_flatten[:, size_t*i:size_t*(i+1)]@w_e[size_t*i:size_t*(i+1),:]
+                # tmp += (tmpo+ids_flatten[:, i, None])*w_i[i, 0]
+            # tmp += neutral_id_bar_flat 
+            tmp = data_mean+ids_flatten@w_i + expr_flatten@w_e
 
+            # neutral_id_bar_flat = neutral_id_bar.reshape( -1, 1)
+            # tmp = neutral_id_bar_flat+ids_flatten@w_i + expr_flatten@w_e
             # tmp= ids_flatten@ + expr_flatten@w_e
             # tmp  = tmp @ w_i
+            
             tmp = tmp.reshape(-1 , 3)
+            # import matplotlib.pyplot as plt
+            # fig = plt.figure()
+            # ax = fig.add_subplot(projection='3d')
+            
+            # ax.scatter(tmp[:,0], tmp[:,1],tmp[:,2], marker='o')
+            # plt.show()
             # tmp = tmp.reshape(-1 , 3)
             # tmp = cam_mtx @ tmp.T + cam_translate
             tmp = scale*(cam_mtx @ tmp.T + cam_translate)
@@ -211,7 +237,7 @@ class PreProp:
             tmp = tmp.T
             tmp /= tmp[:, -1, np.newaxis]
             tmp = (np.squeeze(y) - tmp[:,:-1])
-            result = np.sum(np.power(tmp, 2)) + (ws.T@ws)[0,0]
+            result = np.sum(np.power(tmp, 2)) #+ (ws.T@ws)[0,0]
             return result 
         
 
@@ -268,7 +294,7 @@ class PreProp:
         
         b  = lmks_2d.reshape(-1, 1)
         
-        id_weight[0,0] = 1.0
+        # id_weight[0,0] = 1.0
         self.a = 0.01
         # res = opt.minimize(fun = wrap_obj, x0 = 0 , method="L-BFGS-B", jac = jac)
         res = coordinate_descent(object_function, lmks_2d, id_weight, exp_weight, cam_params)

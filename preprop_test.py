@@ -168,24 +168,49 @@ class PreProp:
         ids = np.array( [m[0] for m  in meshes])
         r,c = meshes[0][0].shape
         ids = ids.reshape(-1, 1, r, c)
+
+        id_mean = np.mean(ids, axis=0, keepdims=True)
+        id_mean_bar = id_mean[..., lmk_idx, :]
         ids_bar = ids[..., lmk_idx, :]
         _, _, new_r, new_c = ids_bar.shape
         exps = np.array([m[1:] for m  in meshes])
-        expr_bar = exps[..., lmk_idx, :] - ids_bar
-        id_size, expr_size, _, _ =expr_bar.shape
         lmks_2d = np.squeeze(np.array(lmks_2d))
+        expr_mean = np.mean(exps, axis=0, keepdims=True)
+        expr_mean_bar = exps[..., lmk_idx, :]
+        expr_bar = exps[..., lmk_idx, :] - expr_mean_bar
+        id_size, expr_size, _, _ =expr_bar.shape
 
         A = id_size*expr_size
         id_weight = np.zeros((id_size, 1)) # Identity
         exp_weight = np.zeros((id_size*expr_size, 1)) # Identity X Expression 
-        
-        param_length = len(id_weight) + len(exp_weight) + 6 
 
         ids_flatten = ids_bar.reshape(-1, new_r*new_c).T
         expr_flatten = expr_bar.reshape(-1, new_r*new_c).T
-        cam_params = np.zeros((3+3, 1)) # rot axis by 3, translation by 3
-     
-    
+
+        def get_combine_bar_model(w_i, w_e):
+            nonlocal id_mean_bar, expr_mean_bar, expr_bar, ids_bar
+            return id_mean_bar + expr_mean_bar + expr_bar@w_e + ids_bar @ w_i
+        def get_combine_model(w_i, w_e):
+            nonlocal id_mean, expr_mean, exps, ids
+            return id_mean + expr_mean + exps@w_e + ids @ w_i
+        iter_num = 20
+        def estimate_camera(lmk2d, vert_3d):
+            ret, rvecs, tvecs = cv2.solvePnP(vert_3d, lmk2d)
+            if ret:
+                rot, _ =cv2.Rodrigues(rvecs[0])
+                return rot, tvecs
+            return None
+        def transform_lm3d(v, cam_rot, cam_tvec):
+            return v@cam_rot + cam_tvec
+        def estimate_shape_coef():
+            pass
+        for i in tqdm(range(iter_num)):
+            verts_3d = get_combine_model(id_weight, exp_weight)
+            if i == 1:
+                rot, tvecs = estimate_camera(lmks_2d, verts_3d) # camera matrix.(not homogenious)
+            else:
+                rot, tvecs = estimate_camera(lmks_2d, verts_3d) # camera matrix.(not homogenious)
+            proj_all_lm3d = transform_lm3d()
 
 
         
