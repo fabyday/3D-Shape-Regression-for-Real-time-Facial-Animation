@@ -286,7 +286,7 @@ class PreProp:
             return scale, cam_rot, cam_vec
         def transform_lm3d(v, scale, cam_rot, cam_tvec):
             return (scale*(cam_rot[:2, :]@v.T + cam_tvec[:2,:])).T
-        def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 5):
+        def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100):
             nonlocal ids_bar, expr_bar, id_mean_bar, expr_mean_bar
             data_mean = id_mean_bar + expr_mean_bar
             id_size, id_row_size, id_col = np.squeeze(ids_bar).shape
@@ -309,19 +309,23 @@ class PreProp:
             # main problem
             d,e,f = datas.shape
             A[:lmk_2d.size, :] = datas.reshape(d, e*f).T
-
+            test = scale*(data_mean2.T + cam_tvecs[:2].T)
             tmp_b = lmk_2d - scale*(data_mean2.T + cam_tvecs[:2].T)
             tmp_b = tmp_b.reshape(-1, 1)
             b[:lmk_2d.size, :] = tmp_b
             for i in range(idexp_size):
-                A[lmk_2d.size + i, :i] = reg_weight
+                A[lmk_2d.size + i, i] = reg_weight
                 b [lmk_2d.size + i, 0] = 0
             # add reg weight
             
             #solve
+
             coef = np.linalg.lstsq(A, b)
             id_coef = coef[0][ :id_size, :]
             expr_coef = coef[0][id_size:, :]
+            # coef = opt.nnls(A,b.reshape(-1))
+            # id_coef = coef[0][ :id_size]
+            # expr_coef = coef[0][id_size:]
             return id_coef, expr_coef
         
         import copy 
@@ -343,7 +347,7 @@ class PreProp:
 
         img = resize(img, 800)
         cv2.imshow("test", img)
-        cv2.waitKey(1000)
+        cv2.waitKey(0)
         
         for i in tqdm.tqdm(range(iter_num)):
             verts_3d = get_combine_bar_model(id_weight, exp_weight)
