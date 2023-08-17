@@ -89,6 +89,14 @@ class InspectorLmkDetectSignal(QObject):
         self.signal.emit()
 
 class Worker(QThread):
+    finished = pyqtSignal(int)
+
+
+
+    def do_wrok(self):
+        pass
+
+
 
 class InspectorWidget(QWidget):
     def __init__(self, program_data : Data):
@@ -267,9 +275,9 @@ class MyApp(QMainWindow):
         self.setWindowTitle('landmark editor')
         self.resize(width*0.8, height*0.8)
 
-
+        data =Data(None, None)
         btn1 = ImageWidget()
-        btn2 = InspectorWidget()
+        btn2 = InspectorWidget(data)
         # btn1.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         # btn1.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
