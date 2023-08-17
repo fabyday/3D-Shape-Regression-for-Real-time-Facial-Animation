@@ -11,8 +11,7 @@ predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 import os 
 import os.path as osp
-
-
+import data_loader as dl 
 
 def save_lmk(path, lmk):
     root_path = osp.dirname(path)
@@ -117,6 +116,7 @@ images = []
 images_name = []
 lmks = []
 
+full_index, eye, contour, mouse = dl.load_ict_landmark("./ict_lmk.info.yaml")
 
 ext_type = [".png", ".jpeg", ".jpg"]
 for ext in ext_type:
@@ -179,7 +179,7 @@ while True:
                 cv2.circle(save_img, (int(rescaled_lmks[i][0]), int(rescaled_lmks[i][1])), 1, (255,0,0), int(10))
             save_lmk(osp.join("./lmks/", osp.splitext(osp.basename( images_name[index]))[0]+".txt"),rescaled_lmks)
             cv2.imwrite(osp.join("./lmks/", osp.basename( images_name[index])),save_img)
-        elif key == ord("p"): # save all
+        elif key == ord("w"): # save all
             pass
         elif key == ord("r"): # move true
             move = not move

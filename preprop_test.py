@@ -170,6 +170,13 @@ class PreProp:
 
     def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
         # Q = clib.calibrate('./images/checker4/*.jpg')
+        # iteratively fit shapes
+        # it consists with 2 phases.
+        # we find id weight, expr weight, proj matrix per each iteration, 
+        # but we don't save and reuse each weights,
+        # then why we should iterate optimization, 
+        # The main reason why we calculate weights is find contour points and fit them to real face.
+        # 
 
         neutral = self.neutral_mesh_v
         neutral_bar = neutral[lmk_idx, :]
@@ -280,9 +287,11 @@ class PreProp:
             # print((test).T[:3])
             # print(lmk2d[:3])
             return scale, cam_rot, cam_vec
+        
         def transform_lm3d(v, scale, cam_rot, cam_tvec):
             return (scale*(cam_rot[:2, :]@v.T + cam_tvec[:2,:])).T
-        def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100):
+        
+        def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100): # phase 1 
             nonlocal ids_bar, expr_bar, neutral_bar
             neutral = neutral_bar
             id_num, id_v_size, id_dim = ids_bar.shape
@@ -323,6 +332,49 @@ class PreProp:
             # id_coef = coef[0][ :id_size]
             # expr_coef = coef[0][id_size:]
             return id_coef, expr_coef
+
+
+        def id_weight_fit(lmks, scales, cam_rots, cam_tvecs, expr_weights): # phase2
+            """
+                lmks : all images lmk pts
+            """
+            nonlocal ids_bar, expr_bar, neutral_bar # v_size, 3 
+            assert(lmk_size >= 1, "lmk size is not validate.")
+            assert(expr_weights >= 1)
+
+            v_size, dim = neutral_bar.shape
+            id_size, _, _ = ids_bar.shape 
+            expr_size, _, _ = expr_bar
+
+            expr_t = np.transpose(expr_bar, [2, 1, 0])
+            expr_t = expr_t.reshape(dim, -1)
+            id_t = np.transpose(ids_bar, [2,1,0])
+            id_t = id_t.reshape(dim, -1)
+
+
+            A = np.zeros_like()
+            b = np.zeros_like(lmks[0])
+            for lmk, scale, cam_rot, cam_tvec, expr_weight in zip(lmks, scales, cam_rots, cam_tvecs, expr_weights) :
+                cam_rot = cam_rot[:2, :]
+                proj_neutral = cam_rot @ neutral.T
+                proj_neutral = proj_neutral.T # v_size, 3
+                proj_expr = cam_rot @ expr_t
+                exact_expr = proj_expr.reshape(-1, expr_size) @ expr_weight
+                exact_expr = exact_expr.reshape(-1, v_size).T # v_size, 3
+                proj_id = cam_rot @ ids_bar
+                proj_id = proj_id.reshape(-1, id_size)
+                tmp_b = lmk - scale*(exact_expr + proj_neutral + cam_tvecs[:2])
+                b += tmp_b 
+                A += scale*proj_id
+            
+            res_id_weight = np.linalg.lstsq(A, b) 
+
+            return res_id_weight 
+
+
+
+
+
         
         import copy 
         def draw_circle(v, img, colors = (1.0,0.0,0.0)):
@@ -363,7 +415,7 @@ class PreProp:
                 cv2.imshow("test", img)
                 cv2.waitKey(1000)
                 # proj_all_lm3d = transform_lm3d(verts_3d,rot, tvecs)
-                id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk)
+                id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
                 path_name = osp.join("testdir", str(index))
                 vv = get_combine_model(np.zeros_like(id_weight), np.zeros_like(exp_weight))
                 igl.write_triangle_mesh(os.path.join(path_name, "init" + ".obj"), vv, self.neutral_mesh_f)
