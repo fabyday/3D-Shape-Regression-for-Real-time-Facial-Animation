@@ -274,7 +274,8 @@ def keyboard_process():
 
 
 def draw_image():
-    landmakr
+    # landmakr
+    pass
 
 
 
