@@ -1,7 +1,6 @@
 from PyQt5.QtWidgets import *
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread
-
 import sys
 import ctypes
 import os.path as osp
@@ -61,10 +60,11 @@ class ImageWidget(QWidget):
         self.program_data = program_data
 
         self.img_view = QLabel("test") 
-        self.img_view.setScaledContents(True)
+        self.img_view.setScaledContents(False)
 
-      
-        self.setSizePolicy(QSizePolicy.Expanding , QSizePolicy.Expanding )
+        self.img_view.setAlignment(QtCore.Qt.AlignCenter)
+
+        self.setSizePolicy(QSizePolicy.Ignored , QSizePolicy.Ignored )
         self.img_view.setStyleSheet("background-color: black; border: 1px solid black;")
         self.angle_ratio = 120
         self.scale_increase_size = 0.2
@@ -73,20 +73,24 @@ class ImageWidget(QWidget):
 
 
     def print_(self):
-        size = self.imageLabel.pixmap().size()
-        size
+        size = self.img_view.pixmap().size()
+        size = self.test.size()
+        print(size)
     
     def reset_image_configuration(self):
         self.image_scale_factor = 1.0
         self.iamge_anchor = (0,0)
         self.anchor =(0,0)
-    
+    def mousePressEvent(self, e):
+        print("clicked") 
+    def mouseReleaseEvent(self, a0) -> None:
+        print("released")
     def wheelEvent(self, event):
         self.image_scale_factor +=  self.scale_increase_size * event.angleDelta().y() / self.angle_ratio
         print(self.width(), self.height())
-        pixmap = self.img_view.pixmap()
-        myScaledPixmap = pixmap.scaled(self.img_view.size(), QtCore.Qt.KeepAspectRatio)
-
+        pixmap = self.test
+        myScaledPixmap = pixmap.scaled(self.image_scale_factor*pixmap.size(), QtCore.Qt.KeepAspectRatio)
+        self.print_()
         self.img_view.setPixmap(myScaledPixmap)
         print(event.angleDelta().y())
         print(self.image_scale_factor)
@@ -99,8 +103,10 @@ class ImageWidget(QWidget):
 
     def initUI(self):
         print(self.width(), " ", self.height())
-        test = QtGui.QPixmap()
-        test.load("./images/all_in_one/expression/GOPR0039.JPG")
+        self.test = QtGui.QPixmap()
+        # test.load("./images/all_in_one/expression/GOPR0039.JPG")
+        self.test.load("./test.JPG")
+        test = self.test
         self.img_view.setPixmap(        test.scaled(self.width(), self.height()))
         self.img_view.setObjectName("image")
         self.img_view.mousePressEvent = self.getPos
@@ -143,7 +149,143 @@ class ImageWidget(QWidget):
 
     def listen_update_image(self):
         pass
+class ImageWidget(QGraphicsView):
+    pixmapClicked = pyqtSignal(QtCore.QPoint)
+    def __init__(self, program_data: Data):
 
+        self._scene = QGraphicsScene()
+        super(ImageWidget, self).__init__(self._scene)
+
+        self.program_data = program_data
+
+        self.test = QtGui.QPixmap()
+        self.test.load("./test.JPG")
+        # self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+        # self._scene.addPixmap()
+        self.img_overlay = self._scene.addPixmap(self.test)
+        
+        
+        
+        self.pen = QtGui.QPen()
+        self.brush = QtGui.QBrush(QtGui.QColor(0,0,255))
+    
+        
+        self.reset_image_configuration()
+        self.angle_ratio = 120
+        self.scale_increase_size = 0.2
+        
+        
+        self.right_mouse_pressed = False
+        self.left_mouse_pressed = False
+        
+    def reset_image_configuration(self):
+        self.image_scale_factor = 1.0
+        pixel = 1
+        self.circle_list  = []
+        self.lines = []
+        import random
+        
+        for i in range(68):
+            test1 = random.randrange(0, 200)
+            test2 = random.randint(0, 200)
+            circle = self._scene.addEllipse(QtCore.QRectF(test1, test2, pixel, pixel),self.pen, self.brush)
+            circle.test = i
+            
+            print(circle.mapToScene(circle.pos()).toPoint().x())
+            print(circle.mapFromItem(circle.pos()).toPoint().x())
+            print(circle.mapToItem(circle.pos()).toPoint().x())
+            print(circle.mapToParent(circle.pos()).toPoint().x())
+            print(circle.mapToScene(circle.pos()).toPoint().x())
+            self.circle_list.append(circle)
+        i = 0
+        print(len(self.circle_list[:-1]), len(self.circle_list[1:]))
+        for (t1,t2) in zip(self.circle_list[:-1], self.circle_list[1:]):
+            e = t1.x()
+            i+=1
+            print(t1.x(), t1.y(), t2.x(), t2.y())
+            line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
+            ll = self._scene.addLine(line, self.pen)
+            self.lines.append(ll)     
+
+
+        
+    def initUI(self):
+        print(self.width(), " ", self.height())
+        self.test = QtGui.QPixmap()
+        # test.load("./images/all_in_one/expression/GOPR0039.JPG")
+        
+        # main_layout = QVBoxLayout()
+        # main_layout.addWidget(self._scene)
+        # self.setLayout(main_layout)
+
+        self.show()
+
+    def mousePressEvent(self, event):
+        
+        vp = event.pos()
+        if event.button() == QtCore.Qt.LeftButton:
+            print(vp)
+            if self.itemAt(vp) == self.img_overlay:
+                sp = self.mapToScene(vp)
+                lp = self.img_overlay.mapFromScene(sp).toPoint()
+                print("test")
+                print(lp)
+                self.pixmapClicked.emit(lp)
+            elif self.itemAt(vp) in self.circle_list :
+                print(self.itemAt(vp).test)
+                print(self.itemAt(vp).isEnabled())
+            else : # this case line 
+                pass
+                
+        elif event.button() == QtCore.Qt.RightButton:
+                self.loc = vp
+                self.right_mouse_pressed = True
+
+        super(ImageWidget, self).mousePressEvent(event)
+        
+    def mouseReleaseEvent(self, event) -> None:
+        print("release")
+        vp = event.pos()
+        if event.button() == QtCore.Qt.LeftButton:
+            vp = event.pos()
+            # print(vp)
+            if self.itemAt(vp) == self.img_overlay:
+                sp = self.mapToScene(vp)
+                lp = self.img_overlay.mapFromScene(sp).toPoint()
+                print(lp)
+                self.pixmapClicked.emit(lp)
+        elif event.button() == QtCore.Qt.RightButton:
+            self.right_mouse_pressed = False
+            print('right')
+        return super().mouseReleaseEvent(event)
+    
+    def mouseMoveEvent(self, e):  # e ; QMouseEvent
+        print(e.button())
+        print(QtCore.Qt.RightButton)
+        if self.right_mouse_pressed:
+            transform = self.transform()
+            delta_x = e.pos().x() - self.loc.x()
+            delta_y = e.pos().y() - self.loc.y()
+            delta_x = delta_x/transform.m11()
+            delta_y = delta_y/transform.m22()
+            self.setSceneRect(self.sceneRect().translated(-delta_x, -delta_y))
+
+            self.loc = e.pos()
+            print("dy ", delta_x, " ", delta_y)
+            ratio = 10
+            self.transform()
+            self.translate(delta_x*10, delta_y*10)
+            
+            
+        # print('x y (%d %d)' % (e.x(), e.y()))
+
+    def wheelEvent(self, e):  # e ; QWheelEvent
+        ratio = e.angleDelta().y() / self.angle_ratio
+        scale = 1.0
+        scale +=  self.scale_increase_size * (ratio)
+        # print(ratio)
+        # print(scale)
+        self.scale(scale, scale)
 
 class InspectorSignalCollection(QObject):
     InspectorIndexSignal = pyqtSignal()
@@ -155,7 +297,6 @@ class InspectorSignalCollection(QObject):
     def call_inspector_detect_signal(self, index):
         print("call_inspector_detect_signal", index)
         self.InspectorLmkDetectSignal.emit(index)
-
     def call_save_signal(self, index):
         print("call_save_signal", index)
         self.InspectorSaveSignal.emit(index)
