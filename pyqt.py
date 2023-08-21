@@ -14,7 +14,20 @@ class Data:
         self.index = 0
         self.image_size = None 
         self.image_collection = None 
+        self.load(images_meta, lmk_meta)
         self.is_load = False
+        self.save_location = ""
+
+    def set_save_location(self, path):
+        self.save_location = path
+    def load(self, images_meta, lmk_meta):
+        if images_meta : 
+            pass 
+
+        if lmk_meta :
+            pass 
+        self.is_load = True
+
     def is_loaded(self):
         return self.is_load
 
@@ -49,6 +62,16 @@ class Data:
 
     def save(self, index):
         pass
+    
+    def save_all(self):
+        pass
+
+    def changed_lmk_listner(self, image_index, item):
+        lmk_num = item.num
+        x = item.pos().x()
+        y = item.pos().y()
+        
+
 
 
 
@@ -150,7 +173,7 @@ class ImageWidget(QWidget):
     def listen_update_image(self):
         pass
 class ImageWidget(QGraphicsView):
-    pixmapClicked = pyqtSignal(QtCore.QPoint)
+    lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
     def __init__(self, program_data: Data):
 
         self._scene = QGraphicsScene()
@@ -165,11 +188,16 @@ class ImageWidget(QGraphicsView):
         self.img_overlay = self._scene.addPixmap(self.test)
         
         
-        
+        # draw color
         self.pen = QtGui.QPen()
-        self.brush = QtGui.QBrush(QtGui.QColor(0,0,255))
-    
-        
+        self.brush = QtGui.QBrush(QtGui.QColor(0,0,0))
+        self.point = QtGui.QBrush(QtGui.QColor(0,0,0))
+
+        self.outer_upper_side_brush = QtGui.QBrush(QtGui.QColor(255,0,0))
+        self.inner_upper_side_brush = QtGui.QBrush(QtGui.QColor(0,255,255))
+        self.inner_lower_side_brush = QtGui.QBrush(QtGui.QColor(255,255,0))
+        self.outer_lower_side_brush = QtGui.QBrush(QtGui.QColor(0,0,255))
+
         self.reset_image_configuration()
         self.angle_ratio = 120
         self.scale_increase_size = 0.2
@@ -177,7 +205,36 @@ class ImageWidget(QGraphicsView):
         
         self.right_mouse_pressed = False
         self.left_mouse_pressed = False
+    
+    #qt callback function
+    def reload_image(self, index):
+        image = self.program_data[index]
+        if len(cv_img.shape)<3:
+            frame = cv2.cvtColor(image.img, cv2.COLOR_GRAY2RGB)
+        else:
+            frame = cv2.cvtColor(image.img, cv2.COLOR_BGR2RGB)
+
+        h, w = image.img.shape[:2]
+        bytesPerLine = 3 * w
+
+        qimage = QImage(frame.data, w, h, bytesPerLine, QImage.Format.Format_RGB888)
+        self.img_overlay.pixmap().convertFromImage(qimage)
+        self.reload_lmk_to_view(index)
+    
+    # this method will be called by callback and image load function
+    def reload_lmk_to_view(self, index):
+        image = self.program_data[index]
+        lmks = image.lmk
+        for lmk, circle in zip(lmks, self.circle_list):
+            x = lmk[0]
+            y = lmk[1]
+            circle.setPos(x, y)
+            circle.setVisible(True)
         
+        for i, (c1,c2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
+            self.lines[i].setLine(c1.pos().x(), c1.pos().y(), c2.pos().x(), c2.pos().y())
+            self.lines[i].setVisible(True)
+
     def reset_image_configuration(self):
         self.image_scale_factor = 1.0
         pixel = 1
@@ -188,26 +245,37 @@ class ImageWidget(QGraphicsView):
         for i in range(68):
             test1 = random.randrange(0, 200)
             test2 = random.randint(0, 200)
-            circle = self._scene.addEllipse(QtCore.QRectF(test1, test2, pixel, pixel),self.pen, self.brush)
-            circle.test = i
-            
-            print(circle.mapToScene(circle.pos()).toPoint().x())
-            print(circle.mapFromItem(circle.pos()).toPoint().x())
-            print(circle.mapToItem(circle.pos()).toPoint().x())
-            print(circle.mapToParent(circle.pos()).toPoint().x())
-            print(circle.mapToScene(circle.pos()).toPoint().x())
+            circle = self._scene.addEllipse(QtCore.QRectF(-pixel/2, -pixel/2, pixel/2, pixel/2),self.pen, self.brush)
+            circle.setPos(test1, test2)
+            circle.setZValue(1)
+            circle.num = i
+            circle.connected_line = set()
             self.circle_list.append(circle)
-        i = 0
-        print(len(self.circle_list[:-1]), len(self.circle_list[1:]))
-        for (t1,t2) in zip(self.circle_list[:-1], self.circle_list[1:]):
+
+        for i, (t1,t2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
             e = t1.x()
-            i+=1
-            print(t1.x(), t1.y(), t2.x(), t2.y())
             line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
             ll = self._scene.addLine(line, self.pen)
+            t1.connected_line.add(ll)
+            t2.connected_line.add(ll)
+            ll.connected_pts = []
+            ll.connected_pts.append(t1)
+            ll.connected_pts.append(t2)
             self.lines.append(ll)     
 
+    def circle_line_edit(self, changed_pts):
+        line_set = changed_pts.connected_line
 
+        for ll in line_set:
+            c1 = ll.connected_pts[0]
+            c2 = ll.connected_pts[1]
+            ll.setLine(c1.pos().x(), c1.pos().y(), c2.pos().x(), c2.pos().y())
+
+    def circle_line_visible(self, flag:bool):
+        for circle in self.circle_list:
+            circle.setVisible(flag)
+        for line in self.lines:
+            line.setVisible(flag)
         
     def initUI(self):
         print(self.width(), " ", self.height())
@@ -228,14 +296,15 @@ class ImageWidget(QGraphicsView):
             if self.itemAt(vp) == self.img_overlay:
                 sp = self.mapToScene(vp)
                 lp = self.img_overlay.mapFromScene(sp).toPoint()
-                print("test")
-                print(lp)
-                self.pixmapClicked.emit(lp)
+                # self.pixmapClicked.emit(lp)
             elif self.itemAt(vp) in self.circle_list :
-                print(self.itemAt(vp).test)
-                print(self.itemAt(vp).isEnabled())
+                self.selected_pts = self.itemAt(vp)
             else : # this case line 
-                pass
+                sp = self.mapToScene(vp)
+                lp = self.img_overlay.mapFromScene(sp).toPoint()
+                print(lp)
+
+
                 
         elif event.button() == QtCore.Qt.RightButton:
                 self.loc = vp
@@ -247,6 +316,7 @@ class ImageWidget(QGraphicsView):
         print("release")
         vp = event.pos()
         if event.button() == QtCore.Qt.LeftButton:
+            self.selected_pts = None
             vp = event.pos()
             # print(vp)
             if self.itemAt(vp) == self.img_overlay:
@@ -269,13 +339,19 @@ class ImageWidget(QGraphicsView):
             delta_x = delta_x/transform.m11()
             delta_y = delta_y/transform.m22()
             self.setSceneRect(self.sceneRect().translated(-delta_x, -delta_y))
-
             self.loc = e.pos()
-            print("dy ", delta_x, " ", delta_y)
             ratio = 10
             self.transform()
             self.translate(delta_x*10, delta_y*10)
-            
+        elif e.buttons() == QtCore.Qt.LeftButton:
+            # print(e.pos().x(), e.pos().y())
+            # print(lp.x(), lp.y())
+            if self.selected_pts :
+                sp = self.mapToScene(e.pos())
+                lp = self.img_overlay.mapFromScene(sp).toPoint()
+                self.selected_pts.setPos(lp.x(), lp.y())
+                self.circle_line_edit(self.selected_pts)
+                self.lmk_data_changed_signal.emit(self.selected_pts)
             
         # print('x y (%d %d)' % (e.x(), e.y()))
 
