@@ -1,3 +1,4 @@
+import typing
 from PyQt5.QtWidgets import *
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread
@@ -6,7 +7,7 @@ import ctypes
 import os.path as osp
 import os 
 import cv2
-
+import yaml
 # import face_main_test as ff
 
 class Data:
@@ -54,12 +55,6 @@ class Data:
     def __len__(self):
         return self.image_size
 
-    def detect_lmk(self, index = -1):
-        if index == - 1: # detect current index
-            pass
-        else :
-            pass
-
     def save(self, index):
         pass
     
@@ -67,10 +62,116 @@ class Data:
         pass
 
     def changed_lmk_listner(self, image_index, item):
-        lmk_num = item.num
-        x = item.pos().x()
-        y = item.pos().y()
+        print("test")
+        try:
+            lmk_num = item.num
+            x = item.pos().x()
+            y = item.pos().y()
+            self.image_collection[image_index].set_lmk(lmk_num, x,y)
+        except:
+            pass
+    
+
         
+
+
+class Worker(QThread):
+    image_load_finished = pyqtSignal(int)
+    lmk_load_finished = pyqtSignal(int)
+    job_finished = pyqtSignal(int, int, bool)
+    def __init__(self, parent, program_data) -> None:
+        super().__init__(parent)
+        self.function_list = []
+        self.program_data = program_data
+        self.load_detector_flag = False
+        self.pp = parent
+    def do_wrok(self):
+        while True:
+            if self.load_detector_flag:
+                self.load_detector_flag = False
+
+            if len(self.function_list):
+                f = self.function_list.pop(0)
+                f()
+
+    def load_detector(self):
+        self.load_detector_flag = True
+    
+
+
+    def save_data(self, id, index_list, callback= None ):
+        total_size = len(index_list)
+        cancel_flag = False
+        def cancel_f():
+            nonlocal cancel_flag
+            cancel_flag = True
+        def wrapper():
+            finished_index_list = []
+            write, fin = self.pp.make_progress_bar_at_status_bar(0, len(index_list))
+            for i, index in enumerate(index_list):
+                if not cancel_flag:
+                    self.program_data[index].redetect_flag = True
+                    self.program_data[index].calc_lankmark_from_dlib()
+                    finished_index_list.append(i)
+                    if callback != None :
+                        callback(i, total_size)
+                    write(i + 1, self.program_data[index].img_name + " finished.")
+                else:
+                    fin()
+                    self.job_finished.emit(id,finished_index_list, False)
+                    return
+            fin()
+            self.job_finished.emit(id,finished_index_list, True)
+
+        self.function_list.append(wrapper)
+        return cancel_f
+
+    def do_detect_lmk(self, id, index_list, callback = None):
+        total_size = len(index_list)
+        cancel_flag = False
+        def cancel_f():
+            nonlocal cancel_flag
+            cancel_flag = True
+        def wrapper():
+            finished_index_list = []
+            write, fin = self.pp.make_progress_bar_at_status_bar(0, len(index_list))
+            for i, index in enumerate(index_list):
+                if not cancel_flag:
+                    self.program_data[index].redetect_flag = True
+                    self.program_data[index].calc_lankmark_from_dlib()
+                    finished_index_list.append(i)
+                    if callback != None :
+                        callback(i, total_size)
+                    write(i + 1, self.program_data[index].img_name + " finished.")
+                else:
+                    fin()
+                    self.job_finished.emit(id,finished_index_list, False)
+                    return
+            fin()
+            self.job_finished.emit(id,finished_index_list, True)
+        self.function_list.append(wrapper)
+        return cancel_f
+
+    def do_load_image(self, id, index_list, callback = None):
+        total_size = len(index_list)
+        cancel_flag = False
+        def cancel_f():
+            nonlocal cancel_flag
+            cancel_flag = True
+        def wrapper():
+            nonlocal cancel_flag
+            finished_index_list = []
+            for i, index in enumerate(index_list):
+                if not cancel_flag:
+                    self.program_data[index].load()
+                    finished_index_list.append(i)
+                    if callback != None:
+                        callback(i, total_size)
+                else:
+                    self.job_finished.emit(id, finished_index_list, False)
+            self.job_finished.emit(id, finished_index_list, True)
+        self.function_list.append(wrapper)
+        return cancel_f
 
 
 
@@ -174,10 +275,14 @@ class ImageWidget(QWidget):
         pass
 class ImageWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
-    def __init__(self, program_data: Data):
+    def __init__(self, program_data: Data, worker : Worker):
 
         self._scene = QGraphicsScene()
         super(ImageWidget, self).__init__(self._scene)
+        self.worker = worker
+
+        self.worker.lmk_load_finished.connect(self.reload_image)
+        self.worker.lmk_load_finished.connect(self.reload_lmk_to_view)
 
         self.program_data = program_data
 
@@ -202,12 +307,19 @@ class ImageWidget(QGraphicsView):
         self.angle_ratio = 120
         self.scale_increase_size = 0.2
         
-        
+        self.selected_pts = None 
         self.right_mouse_pressed = False
         self.left_mouse_pressed = False
+
+
+        self.index = -1
     
+
+    def set_image_index(self, index):
+        self.index = index
     #qt callback function
-    def reload_image(self, index):
+    def reload_image(self):
+        index = self.index
         image = self.program_data[index]
         if len(cv_img.shape)<3:
             frame = cv2.cvtColor(image.img, cv2.COLOR_GRAY2RGB)
@@ -222,7 +334,8 @@ class ImageWidget(QGraphicsView):
         self.reload_lmk_to_view(index)
     
     # this method will be called by callback and image load function
-    def reload_lmk_to_view(self, index):
+    def reload_lmk_to_view(self):
+        index = self.index
         image = self.program_data[index]
         lmks = image.lmk
         for lmk, circle in zip(lmks, self.circle_list):
@@ -322,8 +435,6 @@ class ImageWidget(QGraphicsView):
             if self.itemAt(vp) == self.img_overlay:
                 sp = self.mapToScene(vp)
                 lp = self.img_overlay.mapFromScene(sp).toPoint()
-                print(lp)
-                self.pixmapClicked.emit(lp)
         elif event.button() == QtCore.Qt.RightButton:
             self.right_mouse_pressed = False
             print('right')
@@ -351,7 +462,7 @@ class ImageWidget(QGraphicsView):
                 lp = self.img_overlay.mapFromScene(sp).toPoint()
                 self.selected_pts.setPos(lp.x(), lp.y())
                 self.circle_line_edit(self.selected_pts)
-                self.lmk_data_changed_signal.emit(self.selected_pts)
+                self.lmk_data_changed_signal.emit(self.index, self.selected_pts)
             
         # print('x y (%d %d)' % (e.x(), e.y()))
 
@@ -364,38 +475,19 @@ class ImageWidget(QGraphicsView):
         self.scale(scale, scale)
 
 class InspectorSignalCollection(QObject):
-    InspectorIndexSignal = pyqtSignal()
+    InspectorIndexSignal = pyqtSignal(int)
     InspectorLmkDetectSignal = pyqtSignal(int)
     InspectorSaveSignal = pyqtSignal(int)
-    def call_cur_index(self):
-        print("call_cur_index")
-        self.InspectorIndexSignal.emit()
-    def call_inspector_detect_signal(self, index):
-        print("call_inspector_detect_signal", index)
-        self.InspectorLmkDetectSignal.emit(index)
-    def call_save_signal(self, index):
-        print("call_save_signal", index)
-        self.InspectorSaveSignal.emit(index)
+    
         
 
-class Worker(QThread):
-    finished = pyqtSignal(int)
-
-
-
-    def do_wrok(self):
-        pass
-
-
-
 class InspectorWidget(QWidget):
-    def __init__(self, program_data : Data):
+    def __init__(self, p, program_data : Data, worker : Worker):
 
         super().__init__()
-
-
+        self.pp = p
         self.program_data = program_data
-
+        self.worker = worker
         self.data = dict()
         self.input_data = dict()
         self.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
@@ -404,16 +496,25 @@ class InspectorWidget(QWidget):
         self.input_data['save root location']  =[QLineEdit(""), QPushButton("...")]
         self.input_data['root_directory'][0].setReadOnly(True)
         self.input_data['save root location'][0].setReadOnly(True)
+        
+        self.jobs = dict()
+        self.current_job_item = (None, None)
 
-        def check_meta_file(name):
+
+        
+
+        def check_and_load_meta_file(name):
             self.input_data['root_directory'][0].setText(name)
             if osp.exists(osp.join(name, "meta.yaml")):
                 self.data["meta file"].setText("meta.yaml")
+                file_name = osp.join(name, "meta.yaml")
+                self.program_data.load(osp.join(name, "meta.yaml"), "lmk_meta.yaml")
+                self.data['meta file'].setText("meta.yaml")
+                self.upate_ui()
             self.data["meta file"].setText("Not Found.")
 
-
-
-        self.input_data['root_directory'][1].clicked.connect(self.open_and_find_directory(check_meta_file))
+     
+        self.input_data['root_directory'][1].clicked.connect(self.open_and_find_directory(check_and_load_meta_file))
         self.input_data['save root location'][1].clicked.connect(self.open_and_find_directory(lambda name : self.input_data['save root location'][0].setText(name)))
         
 
@@ -441,42 +542,125 @@ class InspectorWidget(QWidget):
 
         self.signal = InspectorSignalCollection()
         self.init_button_signal()
+    def upate_ui(self):
+        lab = self.pp.get_status_show_message()
+
+        try :
+            self.image_info[-1].setText(str(len(self.program_data)))
+            self.image_info[1].setText(str(self.program_data.get_cur_index() + 1))
+            item = self.program_data[self.program_data.get_cur_index()]
+            self.data['image_name'].setText(item.img_name)
+            self.data['category'].setText(item.category)
+            onlyInt = QIntValidator()
+            self.setRange(1, len(self.program_data))
+            self.image_info[1].setValidator(onlyInt)
+        except:
+            lab("this funtionality is not allowed. because meta file is not loaded", 2000)
 
     def init_button_signal(self):
-        
-        def function_wrapping(*funcs):
-            def wrapper():
-                for f in funcs:
-                    if isinstance(f, (list, tuple)):
-                        f[0](f[1:])
-                    else:
-                        f()
-            return wrapper
-        
-        prev_index_function = function_wrapping(self.program_data.dec_index, self.signal.call_cur_index)
-        next_index_function = function_wrapping(self.program_data.inc_index, self.signal.call_cur_index)
-        self.prev.clicked.connect( prev_index_function )
-        self.next.clicked.connect( next_index_function )
+    
+        import time
+
+        def update_when_finished_cur_image(i):
+                if i == self.program_data.get_cur_index():
+                    self.signal.InspectorIndexSignal.emit(self.program_data.get_cur_index())
+           
+        def prev():
+            lab = self.pp.get_status_show_message()
+
+            try:
+                id = time.time()
+                self.program_data.dec_index()
+                self.worker.do_load_image(id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                self.upate_ui()
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded", 2000)
 
 
-        detect_function = function_wrapping(self.program_data.detect_lmk, [self.signal.call_inspector_detect_signal, self.program_data.get_cur_index()])
+            
+        def next():
+            lab = self.pp.get_status_show_message()
 
-        def detect_all_lmk_function(): 
-            for i in range(len(self.program_data)):
-                self.program_data.detect_lmk(i)
-            self.signal.call_inspector_detect_signal(i)
-        detect_all_function = function_wrapping(detect_all_lmk_function, )
-        self.detect_all_button.clicked.connect(detect_function)
-        self.detect_button.clicked.connect(detect_all_function)
+            try:
+                self.program_data.inc_index()
+                self.worker.do_load_image(id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                self.upate_ui()
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded", 2000)
+
+
+        self.prev.clicked.connect( prev )
+        self.next.clicked.connect( next )
+
+
+
+        def detect(index_list = None):
+
+            def update_when_finished_cur_image(i):
+                if i == self.program_data.get_cur_index():
+                    self.signal.InspectorLmkDetectSignal.emit(self.program_data.get_cur_index())
+           
+            lab = self.pp.get_status_show_message()
+            try:
+                if index_list == None:
+                    index_list = [self.program_data.get_cur_index()]
+                
+
+                if self.current_job_item == None :
+                    j_id = time.time()
+                    cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
+                    self.current_job_item = (j_id , cancel_f)
+                    self.jobs[j_id] =False
+                else:
+                    self.current_job_item[1]() # cancel function
+                    j_id = time.time()
+                    cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
+                    self.current_job_item = (j_id , cancel_f)
+                    self.jobs[j_id] = False
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded", 2000)
+                
+        def detect_all():
+            lab = self.pp.get_status_show_message()
+
+            try:
+                detect(list(range(len(self.program_data))))
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded.", 2000)      
+        def detect_finished_function(j_id, index_list, flag):
+            # emitted by thread
+            if flag == False : #when canceled
+                delete_f = self.jobs.pop(j_id)
+            if flag == True :
+                self.current_job_item = None 
+                delete_f = self.jobs.pop(j_id)
+
+
+        self.worker.job_finished.connect(detect_finished_function)
+
+
+        self.detect_all_button.clicked.connect(detect_all)
+        self.detect_button.clicked.connect(detect)
 
 
         def save_function():
-            self.program_data.save()
-            self.signal.call_save_signal(self.program_data.get_cur_index())
+            lab = self.pp.get_status_show_message()
+            try:
+                self.program_data.save(self.program_data.get_cur_index())
+                self.signal.call_save_signal(self.program_data.get_cur_index())
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded.", 2000)      
+
         def save_all_function():
-            for i in range(len(self.program_data)):
-                self.program_data.save(i)
-                self.signal.call_save_signal(i)
+            lab = self.pp.get_status_show_message()
+            try:
+                for i in range(len(self.program_data)):
+                    self.program_data.save(i)
+                    self.signal.call_save_signal(i)
+            except:
+                lab("this funtionality is not allowed. because meta file is not loaded.", 2000)      
+
+            
 
         self.save_individual_button.clicked.connect(save_function)
         self.save_all_button.clicked.connect(save_all_function)
@@ -573,33 +757,71 @@ class MyApp(QMainWindow):
     def __init__(self):
         super().__init__()
 
-        self.data = None
-        self.worker_thread = Worker()
-
+        self.data = Data(None, None)
+        self.worker_thread = Worker(self, self.data)
+        self.worker_thread.start()
 
         self.initUI()
-
+        self.connect_widgets_functionality()
     def initUI(self):
         width = ctypes.windll.user32.GetSystemMetrics(0)
         height = ctypes.windll.user32.GetSystemMetrics(1)
         self.setWindowTitle('landmark editor')
         self.resize(width*0.8, height*0.8)
 
-        data =Data(None, None)
-        btn1 = ImageWidget(data)
-        btn2 = InspectorWidget(data)
+        imagewidget = ImageWidget(self.data, self.worker_thread)
+        inspectorwidget = InspectorWidget(self, self.data, self.worker_thread)
         # btn1.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Preferred)
         # btn1.setSizePolicy(QSizePolicy.Minimum, QSizePolicy.Minimum)
 
         widget = QWidget()
 
         layout = QHBoxLayout(widget)
-        layout.addWidget(btn1, 7)
-        layout.addWidget(btn2, 3)
-        btn1.initUI()
-        btn2.initUI()
+        layout.addWidget(imagewidget, 7)
+        layout.addWidget(inspectorwidget, 3)
+        imagewidget.initUI()
+        inspectorwidget.initUI()
         self.setCentralWidget(widget)
 
+        self.statusbar = QStatusBar()
+        self.setStatusBar(self.statusbar)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setVisible(False)
+        self.status_label = QLabel()
+        self.statusbar.addWidget(self.status_label)
+        self.statusbar.addPermanentWidget(self.progress_bar)
+        self.imagewidget = imagewidget
+        self.inspectorwidget = inspectorwidget
+
+
+
+        
+
+    def make_progress_bar_at_status_bar(self,start, end):
+        self.progress_bar.setRange(start, end)
+        self.progress_bar.setValue(start)
+        self.progress_bar.setVisible(True)
+        def write(i, message=""):
+            self.progress_bar.setValue(i)
+            self.status_label.setText(message)
+        def finished():
+            self.progress_bar.setVisible(False)
+
+        return write, finished
+
+    def get_status_show_message(self):
+
+        return self.statusbar.showMessage
+
+    def connect_widgets_functionality(self):
+        def wrapper(i):
+            self.imagewidget.set_image_index(i)
+            self.imagewidget.reload_image()
+            self.imagewidget.reload_lmk_to_view()
+        
+        self.imagewidget.lmk_data_changed_signal.connect(self.data.changed_lmk_listner)
+        self.inspectorwidget.signal.InspectorLmkDetectSignal.connect(self.imagewidget.reload_lmk_to_view)
+        self.inspectorwidget.signal.InspectorIndexSignal.connect(wrapper)
 
     def center(self):
         # qr = self.frameGeometry()
@@ -607,7 +829,14 @@ class MyApp(QMainWindow):
         # qr.moveCenter(cp)
         # self.move(qr.topLeft())
         pass
+    
 
+    def closeEvent(self, event):
+        self.worker_thread.terminate()
+        print("terminated : ", self.worker_thread.isFinished())
+        # here you can terminate your threads and do other stuff
+        # and afterwards call the closeEvent of the super-class
+        super(QMainWindow, self).closeEvent(event)
 
 
 if __name__ == '__main__':

@@ -113,13 +113,15 @@ class Image:
         self.img_scale_factor  = 1.0
         
         self.lmk_detected = False
+        self.redetect_flag = False
         if not lazy_load:
             self.load()
     
     def is_landmark_detected(self):
         return self.lmk_detected
     def calc_lankmark_from_dlib(self, detector, redetect=False):
-        
+        redetect = self.redetect_flag 
+        self.redetect_flag = False
         if not self.is_landmark_detected() or redetect:
             rects = detector(img, 1)
             for i, rect in enumerate(rects):
@@ -133,9 +135,13 @@ class Image:
                     self.lmk[j][0] = x
                     self.lmk[j][1] = y
             self.lmk_detected = True
+            return True
+        return False
     def load(self):
         if not self.is_loaded():
             self.img = cv2.imread(self.img_path)
+            return True
+        return False
 
     def is_loaded(self):
         return True if self.img != None else False
