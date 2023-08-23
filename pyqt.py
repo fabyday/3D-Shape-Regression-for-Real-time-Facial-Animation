@@ -8,7 +8,7 @@ import os.path as osp
 import os 
 import cv2
 import yaml
-# import face_main_test as ff
+import face_main_test as ff
 
 class Data:
     def __init__(self, images_meta, lmk_meta):
@@ -21,12 +21,13 @@ class Data:
 
     def set_save_location(self, path):
         self.save_location = path
+
+
+
     def load(self, images_meta, lmk_meta):
         if images_meta : 
-            pass 
-
-        if lmk_meta :
-            pass 
+            self.image_collection =  ff.ImageCollection(image_dir=images_meta, lmk_meta_file=lmk_meta, lazy_load=True)
+            self.image_size = len(self.image_collection)
         self.is_load = True
 
     def is_loaded(self):
@@ -83,19 +84,28 @@ class Worker(QThread):
         super().__init__(parent)
         self.function_list = []
         self.program_data = program_data
-        self.load_detector_flag = False
         self.pp = parent
-    def do_wrok(self):
+    def run(self):
         while True:
-            if self.load_detector_flag:
-                self.load_detector_flag = False
-
             if len(self.function_list):
                 f = self.function_list.pop(0)
                 f()
 
-    def load_detector(self):
-        self.load_detector_flag = True
+    def load_detector(self, path = None):
+        write, fin = self.pp.make_progress_bar_at_status_bar(0, 1)
+        def wrapper():
+            try:
+                write(0, "loading start")
+                self.program_data.image_collection.load_predictor(path)
+                write(0, "loading end")
+            except:
+                lab = self.pp.get_status_show_message()
+                lab("this funtionality is not allowed. because meta file is not loaded", 2000)
+            finally:
+                fin()
+        
+        self.function_list.append(wrapper)
+
     
 
 
@@ -506,12 +516,12 @@ class InspectorWidget(QWidget):
         def check_and_load_meta_file(name):
             self.input_data['root_directory'][0].setText(name)
             if osp.exists(osp.join(name, "meta.yaml")):
-                self.data["meta file"].setText("meta.yaml")
-                file_name = osp.join(name, "meta.yaml")
-                self.program_data.load(osp.join(name, "meta.yaml"), "lmk_meta.yaml")
+                self.program_data.load(name, "ict_lmk_info.yaml")
                 self.data['meta file'].setText("meta.yaml")
                 self.upate_ui()
-            self.data["meta file"].setText("Not Found.")
+                self.worker.load_detector()
+            else:
+                self.data["meta file"].setText("Not Found.")
 
      
         self.input_data['root_directory'][1].clicked.connect(self.open_and_find_directory(check_and_load_meta_file))
@@ -561,7 +571,7 @@ class InspectorWidget(QWidget):
     
         import time
 
-        def update_when_finished_cur_image(i):
+        def update_when_finished_cur_image(i, total_size):
                 if i == self.program_data.get_cur_index():
                     self.signal.InspectorIndexSignal.emit(self.program_data.get_cur_index())
            
@@ -569,9 +579,12 @@ class InspectorWidget(QWidget):
             lab = self.pp.get_status_show_message()
 
             try:
-                id = time.time()
+                j_id = int(time.time())
                 self.program_data.dec_index()
-                self.worker.do_load_image(id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                self.current_job_item = (j_id , cancel_f)
+
+
                 self.upate_ui()
             except:
                 lab("this funtionality is not allowed. because meta file is not loaded", 2000)
@@ -582,9 +595,13 @@ class InspectorWidget(QWidget):
             lab = self.pp.get_status_show_message()
 
             try:
+                j_id = int(time.time())
                 self.program_data.inc_index()
-                self.worker.do_load_image(id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
+                self.current_job_item = (j_id , cancel_f)
                 self.upate_ui()
+                self.jobs[j_id] = False
+
             except:
                 lab("this funtionality is not allowed. because meta file is not loaded", 2000)
 
@@ -596,7 +613,7 @@ class InspectorWidget(QWidget):
 
         def detect(index_list = None):
 
-            def update_when_finished_cur_image(i):
+            def update_when_finished_cur_image(i, total_size):
                 if i == self.program_data.get_cur_index():
                     self.signal.InspectorLmkDetectSignal.emit(self.program_data.get_cur_index())
            
@@ -607,13 +624,13 @@ class InspectorWidget(QWidget):
                 
 
                 if self.current_job_item == None :
-                    j_id = time.time()
+                    j_id = int(time.time())
                     cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
                     self.current_job_item = (j_id , cancel_f)
                     self.jobs[j_id] =False
                 else:
                     self.current_job_item[1]() # cancel function
-                    j_id = time.time()
+                    j_id = int(time.time())
                     cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
                     self.current_job_item = (j_id , cancel_f)
                     self.jobs[j_id] = False
@@ -763,6 +780,7 @@ class MyApp(QMainWindow):
 
         self.initUI()
         self.connect_widgets_functionality()
+        # self.worker_thread.load_detector()
     def initUI(self):
         width = ctypes.windll.user32.GetSystemMetrics(0)
         height = ctypes.windll.user32.GetSystemMetrics(1)
@@ -797,7 +815,7 @@ class MyApp(QMainWindow):
 
         
 
-    def make_progress_bar_at_status_bar(self,start, end):
+    def make_progress_bar_at_status_bar(self, start, end):
         self.progress_bar.setRange(start, end)
         self.progress_bar.setValue(start)
         self.progress_bar.setVisible(True)

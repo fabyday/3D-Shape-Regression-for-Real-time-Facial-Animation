@@ -1,12 +1,10 @@
 # face detection and configuration, modification.
 
 
-import dlib
+# import dlib
 import cv2
 import numpy as np 
 import glob, copy
-detector = dlib.get_frontal_face_detector()
-predictor = dlib.shape_predictor("shape_predictor_68_face_landmarks.dat")
 
 
 import os 
@@ -94,9 +92,6 @@ def mouse_event(event, x, y, flags, param):
 
 
 
-cv2.namedWindow("mod")
-cv2.resizeWindow('mod', *window_size)
-
 class LandmarkMeta:
     def __init__(self):
         pass
@@ -119,7 +114,8 @@ class Image:
     
     def is_landmark_detected(self):
         return self.lmk_detected
-    def calc_lankmark_from_dlib(self, detector, redetect=False):
+    def calc_lankmark_from_dlib(self, detector,predictor, redetect=False):
+        import dlib
         redetect = self.redetect_flag 
         self.redetect_flag = False
         if not self.is_landmark_detected() or redetect:
@@ -178,12 +174,17 @@ class ImageCollectionIterator:
         self.collection = collection
         self.index_list = []
 
-        
+        self.predictor = None
         tmp = copy.deepcopy(list(self.collection.meta.items()))
         tmp.reverse()
         self.item_stack = tmp
         self.key_stack = []
     
+    def load_predictor(self, path=None):
+        if path == None :
+            path = "./shape_predictor_68_face_landmarks.dat"
+        self.detector = dlib.get_frontal_face_detector()
+        self.predictor = dlib.shape_predictor(path)
 
     def __iter__(self):
         return self 
@@ -241,57 +242,9 @@ class ImageCollection():
 
 
     
-img_collection = ImageCollection("./images/all_in_one/expression", "./ict_lmk_info.yaml")
-for i, img in enumerate(img_collection):
-    print(str(i)+" "+str(img))
-
-print(img_collection[10])
-
-img_collection_size = len(img_collection)
-
-img_scale_factor = 1.0
-img_scale_factor_changed = False
-
-#global variables
-img_collection_size
-img_index = 0 
-
-def save_process():
-    img_collection[img_index]
-def keyboard_process():
-    global img_collection_size
-    key = cv2.waitKey(1)
-    if key == ord('q'): #quit
-            return False
-    elif key == ord("d"): # move next
-        img_index += 1
-        if img_index > img_collection_size - 1 :
-            img_index = 0
-    elif key == ord("a"): # move prev
-        img_index -= 1
-        if img_index < 0:
-            img_index = img_collection_size - 1
-    elif key == ord("s"): # save current images.
-       save_process()
-    elif key == ord("w"): # save all
-       save_process()
-    elif key == ord("r"): # move true
-        move = not move
+# img_collection = ImageCollection("./images/all_in_one/expression", "./ict_lmk_info.yaml")
 
 
-def draw_image():
-    # landmakr
-    pass
-
-
-
-while True:
-    img = img_collection[i]
-    resized_raw_img = img.get_resized_image(img_scale_factor)
-
-    if not keyboard_process():
-        break
-    
 
 
 
