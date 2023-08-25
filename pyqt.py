@@ -342,7 +342,7 @@ class ImageWidget(QGraphicsView):
 
         qimage = QImage(frame.data, w, h, bytesPerLine, QImage.Format.Format_RGB888)
         test = QtGui.QPixmap()
-        test.fromImage(qimage)
+        test = test.fromImage(qimage)
         # self.img_overlay.pixmap().convertFromImage(qimage)
         self.img_overlay.setPixmap(test)
         self.reload_lmk_to_view()
