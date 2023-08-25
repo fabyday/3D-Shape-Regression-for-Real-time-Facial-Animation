@@ -1,6 +1,7 @@
 import typing
 from PyQt5.QtWidgets import *
 from PyQt5 import QtGui, QtCore
+from PyQt5.QtGui import QImage
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread
 import sys
 import ctypes
@@ -176,7 +177,7 @@ class Worker(QThread):
                     self.program_data[index].load()
                     finished_index_list.append(i)
                     if callback != None:
-                        callback(i, total_size)
+                        callback(index, total_size)
                 else:
                     self.job_finished.emit(id, finished_index_list, False)
             self.job_finished.emit(id, finished_index_list, True)
@@ -331,7 +332,7 @@ class ImageWidget(QGraphicsView):
     def reload_image(self):
         index = self.index
         image = self.program_data[index]
-        if len(cv_img.shape)<3:
+        if len(image.img.shape)<3:
             frame = cv2.cvtColor(image.img, cv2.COLOR_GRAY2RGB)
         else:
             frame = cv2.cvtColor(image.img, cv2.COLOR_BGR2RGB)
@@ -340,8 +341,11 @@ class ImageWidget(QGraphicsView):
         bytesPerLine = 3 * w
 
         qimage = QImage(frame.data, w, h, bytesPerLine, QImage.Format.Format_RGB888)
-        self.img_overlay.pixmap().convertFromImage(qimage)
-        self.reload_lmk_to_view(index)
+        test = QtGui.QPixmap()
+        test.fromImage(qimage)
+        # self.img_overlay.pixmap().convertFromImage(qimage)
+        self.img_overlay.setPixmap(test)
+        self.reload_lmk_to_view()
     
     # this method will be called by callback and image load function
     def reload_lmk_to_view(self):
@@ -572,7 +576,11 @@ class InspectorWidget(QWidget):
         import time
 
         def update_when_finished_cur_image(i, total_size):
+                print("tal")
+                print(i)
+                print(self.program_data.get_cur_index())
                 if i == self.program_data.get_cur_index():
+                    print("test")
                     self.signal.InspectorIndexSignal.emit(self.program_data.get_cur_index())
            
         def prev():
