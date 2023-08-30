@@ -17,7 +17,8 @@ def load_ict_landmark(name):
     contour = raw_meta['meta']['ict_landmark_index']['contour']
     mouse = raw_meta['meta']['ict_landmark_index']['mouse']
     eyebrow = raw_meta['meta']['ict_landmark_index']['eyebrow']
-    return full_index, eye, contour, mouse, eyebrow
+    nose = raw_meta['meta']['ict_landmark_index']['nose']
+    return full_index, eye, contour, mouse, eyebrow, nose
 
 def load_image_meta(name):
     """

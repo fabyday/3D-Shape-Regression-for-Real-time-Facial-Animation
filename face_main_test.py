@@ -98,8 +98,9 @@ class LandmarkMeta:
 
 
 class Image:
-    def __init__(self, img_path, lmk_size, img_name, category=None, lazy_load = False):
+    def __init__(self, parent, img_path, lmk_size, img_name, category=None, lazy_load = False):
         self.img_path = img_path
+        self.parent = parent
         self.lmk = [[0,0] for _ in range(lmk_size)]
         self.img_name = img_name
         self.category = category
@@ -140,7 +141,15 @@ class Image:
                     x, y = shape.part(j).x, shape.part(j).y
                     self.lmk[j][0] = x*max_length_ratio
                     self.lmk[j][1] = y*max_length_ratio
-            self.lmk_detected = True
+            if rects :
+                self.lmk_detected = True
+            else : 
+                for img in self.parent :
+                    if img.is_landmark_detected():
+                        self.lmk = copy.deepcopy(img.lmk)
+                        self.lmk_detected = True
+                        break
+                self.lmk_detected = False
             return True
         return False
     
@@ -213,7 +222,7 @@ class ImageCollection():
         self.meta, self.ext = dl.load_image_meta(osp.join(image_dir, "meta.yaml"))
         self.lazy_load = lazy_load
 
-        self.full_index, self.eye, self.contour, self.mouse, self.eyebrow = dl.load_ict_landmark(lmk_meta_file)
+        self.full_index, self.eye, self.contour, self.mouse, self.eyebrow, self.nose = dl.load_ict_landmark(lmk_meta_file)
         self.lmk_size = len(self.full_index)
 
         self.img_data_infos = dict()
@@ -223,7 +232,7 @@ class ImageCollection():
             expr_image_collection = self.img_data_infos[expr_key]
             for img_key in self.meta[expr_key]:
                 img_path = osp.join(image_dir, img_key+self.ext)
-                expr_image_collection[img_key] = Image(img_path, self.lmk_size, img_key, expr_key, lazy_load=lazy_load)
+                expr_image_collection[img_key] = Image(self, img_path, self.lmk_size, img_key, expr_key, lazy_load=lazy_load)
                 self.img_data_list.append(expr_image_collection[img_key])
 
     
@@ -258,7 +267,6 @@ class ImageCollection():
 
 
     
-# img_collection = ImageCollection("./images/all_in_one/expression", "./ict_lmk_info.yaml")
 
 
 
