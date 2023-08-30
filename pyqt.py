@@ -1,8 +1,9 @@
 import typing
 from PyQt5.QtWidgets import *
+import time
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtGui import QImage
-from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread
+from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex
 import sys
 import ctypes
 import os.path as osp
@@ -23,7 +24,8 @@ class Data:
     def set_save_location(self, path):
         self.save_location = path
 
-
+    def get_detector_and_predictor(self):
+        return self.image_collection.get_detector_and_predictor()
 
     def load(self, images_meta, lmk_meta):
         if images_meta : 
@@ -64,7 +66,6 @@ class Data:
         pass
 
     def changed_lmk_listner(self, image_index, item):
-        print("test")
         try:
             lmk_num = item.num
             x = item.pos().x()
@@ -83,13 +84,16 @@ class Worker(QThread):
     job_finished = pyqtSignal(int, int, bool)
     def __init__(self, parent, program_data) -> None:
         super().__init__(parent)
+        self.mutex = QMutex()
         self.function_list = []
         self.program_data = program_data
         self.pp = parent
     def run(self):
         while True:
             if len(self.function_list):
+                self.mutex.lock()
                 f = self.function_list.pop(0)
+                self.mutex.unlock()
                 f()
 
     def load_detector(self, path = None):
@@ -97,15 +101,20 @@ class Worker(QThread):
         def wrapper():
             try:
                 write(0, "loading start")
+                print(path)
                 self.program_data.image_collection.load_predictor(path)
                 write(0, "loading end")
-            except:
+            except Exception as e:
                 lab = self.pp.get_status_show_message()
-                lab("this funtionality is not allowed. because meta file is not loaded", 2000)
+                print(e)
+                # lab("this funtionality is not allowed. because meta file is not loaded", 2000)
+                lab(str(e), 2000)
             finally:
                 fin()
-        
+
+        self.mutex.lock()
         self.function_list.append(wrapper)
+        self.mutex.unlock()
 
     
 
@@ -149,10 +158,10 @@ class Worker(QThread):
             for i, index in enumerate(index_list):
                 if not cancel_flag:
                     self.program_data[index].redetect_flag = True
-                    self.program_data[index].calc_lankmark_from_dlib()
+                    self.program_data[index].calc_lankmark_from_dlib(*(self.program_data.get_detector_and_predictor()))
                     finished_index_list.append(i)
                     if callback != None :
-                        callback(i, total_size)
+                        callback(index, total_size)
                     write(i + 1, self.program_data[index].img_name + " finished.")
                 else:
                     fin()
@@ -181,109 +190,15 @@ class Worker(QThread):
                 else:
                     self.job_finished.emit(id, finished_index_list, False)
             self.job_finished.emit(id, finished_index_list, True)
+        self.mutex.lock()
         self.function_list.append(wrapper)
+        self.mutex.unlock()
         return cancel_f
 
 
 
 
-class ImageWidget(QWidget):
-    def __init__(self, program_data: Data):
 
-        super().__init__()
-
-        self.program_data = program_data
-
-        self.img_view = QLabel("test") 
-        self.img_view.setScaledContents(False)
-
-        self.img_view.setAlignment(QtCore.Qt.AlignCenter)
-
-        self.setSizePolicy(QSizePolicy.Ignored , QSizePolicy.Ignored )
-        self.img_view.setStyleSheet("background-color: black; border: 1px solid black;")
-        self.angle_ratio = 120
-        self.scale_increase_size = 0.2
-        self.reset_image_configuration()
-        # self.img_view.wheelEvent = self.wheel
-
-
-    def print_(self):
-        size = self.img_view.pixmap().size()
-        size = self.test.size()
-        print(size)
-    
-    def reset_image_configuration(self):
-        self.image_scale_factor = 1.0
-        self.iamge_anchor = (0,0)
-        self.anchor =(0,0)
-    def mousePressEvent(self, e):
-        print("clicked") 
-    def mouseReleaseEvent(self, a0) -> None:
-        print("released")
-    def wheelEvent(self, event):
-        self.image_scale_factor +=  self.scale_increase_size * event.angleDelta().y() / self.angle_ratio
-        print(self.width(), self.height())
-        pixmap = self.test
-        myScaledPixmap = pixmap.scaled(self.image_scale_factor*pixmap.size(), QtCore.Qt.KeepAspectRatio)
-        self.print_()
-        self.img_view.setPixmap(myScaledPixmap)
-        print(event.angleDelta().y())
-        print(self.image_scale_factor)
-
-    def getPos(self , event):
-        print(event.button())
-        x = event.pos().x()
-        y = event.pos().y() 
-        print(x, " , " , y)
-
-    def initUI(self):
-        print(self.width(), " ", self.height())
-        self.test = QtGui.QPixmap()
-        # test.load("./images/all_in_one/expression/GOPR0039.JPG")
-        self.test.load("./test.JPG")
-        test = self.test
-        self.img_view.setPixmap(        test.scaled(self.width(), self.height()))
-        self.img_view.setObjectName("image")
-        self.img_view.mousePressEvent = self.getPos
-
-        
-        main_layout = QVBoxLayout()
-        main_layout.addWidget(self.img_view)
-        self.setLayout(main_layout)
-
-        self.show()
-    
-
-    def paint_event():
-        pass
-
-    def update_scale_increse_size(self, size):
-        self.scale_increase_size = size
-
-    def load_image_slot(self, index):
-        self.program_data[index]
-
-    def get_img_from_cv_img(self, cv_img):
-        h,w,c = cv_img.shape
-        ratio = 1.0
-        canvas_h = self.height()
-        canvas_w = self.width()
-        if h > w:
-            image_max_length = h
-            ratio = canvas_h / image_max_length
-        else:
-            image_max_length = w
-            ratio = canvas_w / image_max_length
-
-
-
-        qImg = QtGui.QImage(cv_img.data, w, h, w*c, QtGui.QImage.Format_RGB888)
-        pixmap = QtGui.QPixmap.fromImage(qImg)
-        self.img_view.setPixmap(pixmap)
-        
-
-    def listen_update_image(self):
-        pass
 class ImageWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
     def __init__(self, program_data: Data, worker : Worker):
@@ -298,7 +213,7 @@ class ImageWidget(QGraphicsView):
         self.program_data = program_data
 
         self.test = QtGui.QPixmap()
-        self.test.load("./test.JPG")
+        # self.test.load("./test.JPG")
         # self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         # self._scene.addPixmap()
         self.img_overlay = self._scene.addPixmap(self.test)
@@ -309,12 +224,15 @@ class ImageWidget(QGraphicsView):
         self.brush = QtGui.QBrush(QtGui.QColor(0,0,0))
         self.point = QtGui.QBrush(QtGui.QColor(0,0,0))
 
-        self.outer_upper_side_brush = QtGui.QBrush(QtGui.QColor(255,0,0))
-        self.inner_upper_side_brush = QtGui.QBrush(QtGui.QColor(0,255,255))
-        self.inner_lower_side_brush = QtGui.QBrush(QtGui.QColor(255,255,0))
-        self.outer_lower_side_brush = QtGui.QBrush(QtGui.QColor(0,0,255))
+        self.outer_upper_side_brush = QtGui.QPen(QtGui.QColor(255,0,0))
+        self.inner_upper_side_brush = QtGui.QPen(QtGui.QColor(0,255,255))
+        self.inner_lower_side_brush = QtGui.QPen(QtGui.QColor(255,255,0))
+        self.outer_lower_side_brush = QtGui.QPen(QtGui.QColor(0,0,255))
+        
+        
 
-        self.reset_image_configuration()
+
+        # self.reset_image_configuration()
         self.angle_ratio = 120
         self.scale_increase_size = 0.2
         
@@ -358,37 +276,83 @@ class ImageWidget(QGraphicsView):
             circle.setPos(x, y)
             circle.setVisible(True)
         
-        for i, (c1,c2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
-            self.lines[i].setLine(c1.pos().x(), c1.pos().y(), c2.pos().x(), c2.pos().y())
-            self.lines[i].setVisible(True)
+
+        for i, (ll) in enumerate(self.lines):
+            p1, p2 = ll.connected_pts
+            ll.setLine(p1.pos().x(), p1.pos().y(), p2.pos().x(), p2.pos().y())
+            ll.setVisible(True)
 
     def reset_image_configuration(self):
         self.image_scale_factor = 1.0
-        pixel = 1
+        pixel = 10
         self.circle_list  = []
         self.lines = []
         import random
         
-        for i in range(68):
+        # self.program_data.
+        full_index = self.program_data.image_collection.full_index
+        eye = self.program_data.image_collection.eye
+        contour = self.program_data.image_collection.contour
+        mouse = self.program_data.image_collection.mouse
+        eyebrow = self.program_data.image_collection.eyebrow
+        for i in range(len(full_index)):
             test1 = random.randrange(0, 200)
             test2 = random.randint(0, 200)
-            circle = self._scene.addEllipse(QtCore.QRectF(-pixel/2, -pixel/2, pixel/2, pixel/2),self.pen, self.brush)
+            circle = self._scene.addEllipse(QtCore.QRectF(-pixel/2, -pixel/2, pixel, pixel),self.pen, self.brush)
             circle.setPos(test1, test2)
             circle.setZValue(1)
             circle.num = i
             circle.connected_line = set()
             self.circle_list.append(circle)
+        
+        def create_line(index_list, pen):
+            for i, (p_i, p_j) in enumerate(zip( index_list[:-1], index_list[1:] )):
+                t1 = self.circle_list[p_i]
+                t2 = self.circle_list[p_j]
+                line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
+                ll = self._scene.addLine(line, pen)
+                t1.connected_line.add(ll)
+                t2.connected_line.add(ll)
+                ll.connected_pts = []
+                ll.connected_pts.append(t1)
+                ll.connected_pts.append(t2)
+                self.lines.append(ll)     
 
-        for i, (t1,t2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
-            e = t1.x()
-            line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
-            ll = self._scene.addLine(line, self.pen)
-            t1.connected_line.add(ll)
-            t2.connected_line.add(ll)
-            ll.connected_pts = []
-            ll.connected_pts.append(t1)
-            ll.connected_pts.append(t2)
-            self.lines.append(ll)     
+        contour_full = contour['full_index']
+        l_eye_upper = eye['left_eye']['upper_eye']
+        l_eye_lower = eye['left_eye']['lower_eye']
+        r_eye_upper = eye['right_eye']['upper_eye']
+        r_eye_lower = eye['right_eye']['lower_eye']
+        outer_upper_mouse = mouse['outer_upper_mouse']
+        outer_lower_mouse = mouse['outer_lower_mouse']
+        inner_upper_mouse = mouse['inner_upper_mouse']
+        inner_lower_mouse = mouse['inner_lower_mouse']
+
+        left_eyebrow = eyebrow['left_eyebrow']['full_index']
+        right_eyebrow = eyebrow['right_eyebrow']['full_index']
+
+        create_line(left_eyebrow, self.outer_lower_side_brush)
+        create_line(right_eyebrow, self.outer_lower_side_brush)
+
+        create_line(contour_full, self.outer_upper_side_brush)
+        create_line(l_eye_upper, self.outer_upper_side_brush)
+        create_line(l_eye_lower, self.outer_lower_side_brush)
+        create_line(r_eye_upper, self.outer_upper_side_brush)
+        create_line(r_eye_lower, self.outer_lower_side_brush)
+        create_line(outer_upper_mouse, self.outer_upper_side_brush)
+        create_line(outer_lower_mouse, self.outer_lower_side_brush)
+        create_line(inner_upper_mouse, self.inner_upper_side_brush)
+        create_line(inner_lower_mouse, self.inner_lower_side_brush)
+        # for i, (t1,t2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
+        #     e = t1.x()
+        #     line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
+        #     ll = self._scene.addLine(line, self.pen)
+        #     t1.connected_line.add(ll)
+        #     t2.connected_line.add(ll)
+        #     ll.connected_pts = []
+        #     ll.connected_pts.append(t1)
+        #     ll.connected_pts.append(t2)
+        #     self.lines.append(ll)     
 
     def circle_line_edit(self, changed_pts):
         line_set = changed_pts.connected_line
@@ -426,6 +390,7 @@ class ImageWidget(QGraphicsView):
                 # self.pixmapClicked.emit(lp)
             elif self.itemAt(vp) in self.circle_list :
                 self.selected_pts = self.itemAt(vp)
+                print("sel : ", self.selected_pts.pos())
             else : # this case line 
                 sp = self.mapToScene(vp)
                 lp = self.img_overlay.mapFromScene(sp).toPoint()
@@ -449,6 +414,8 @@ class ImageWidget(QGraphicsView):
             if self.itemAt(vp) == self.img_overlay:
                 sp = self.mapToScene(vp)
                 lp = self.img_overlay.mapFromScene(sp).toPoint()
+                print("kp", sp)
+                print("kp", lp)
         elif event.button() == QtCore.Qt.RightButton:
             self.right_mouse_pressed = False
             print('right')
@@ -492,6 +459,7 @@ class InspectorSignalCollection(QObject):
     InspectorIndexSignal = pyqtSignal(int)
     InspectorLmkDetectSignal = pyqtSignal(int)
     InspectorSaveSignal = pyqtSignal(int)
+    InspectorLoadMetaData = pyqtSignal()
     
         
 
@@ -522,7 +490,12 @@ class InspectorWidget(QWidget):
             if osp.exists(osp.join(name, "meta.yaml")):
                 self.program_data.load(name, "ict_lmk_info.yaml")
                 self.data['meta file'].setText("meta.yaml")
+                j_id = int(time.time())
+                self.jobs[j_id] = False
+                cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()],None)
+                self.current_job_item = (j_id , cancel_f)
                 self.upate_ui()
+                self.signal.InspectorLoadMetaData.emit()
                 self.worker.load_detector()
             else:
                 self.data["meta file"].setText("Not Found.")
@@ -573,7 +546,6 @@ class InspectorWidget(QWidget):
 
     def init_button_signal(self):
     
-        import time
 
         def update_when_finished_cur_image(i, total_size):
                 print("tal")
@@ -589,10 +561,9 @@ class InspectorWidget(QWidget):
             try:
                 j_id = int(time.time())
                 self.program_data.dec_index()
+                self.jobs[j_id] = False
                 cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
                 self.current_job_item = (j_id , cancel_f)
-
-
                 self.upate_ui()
             except:
                 lab("this funtionality is not allowed. because meta file is not loaded", 2000)
@@ -605,10 +576,10 @@ class InspectorWidget(QWidget):
             try:
                 j_id = int(time.time())
                 self.program_data.inc_index()
+                self.jobs[j_id] = False
                 cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()],  update_when_finished_cur_image)
                 self.current_job_item = (j_id , cancel_f)
                 self.upate_ui()
-                self.jobs[j_id] = False
 
             except:
                 lab("this funtionality is not allowed. because meta file is not loaded", 2000)
@@ -620,10 +591,10 @@ class InspectorWidget(QWidget):
 
 
         def detect(index_list = None):
-
+            idx = self.program_data.get_cur_index()
             def update_when_finished_cur_image(i, total_size):
-                if i == self.program_data.get_cur_index():
-                    self.signal.InspectorLmkDetectSignal.emit(self.program_data.get_cur_index())
+                if i == idx:
+                    self.signal.InspectorLmkDetectSignal.emit(idx)
            
             lab = self.pp.get_status_show_message()
             try:
@@ -633,18 +604,21 @@ class InspectorWidget(QWidget):
 
                 if self.current_job_item == None :
                     j_id = int(time.time())
+                    self.jobs[j_id] =False
                     cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
                     self.current_job_item = (j_id , cancel_f)
-                    self.jobs[j_id] =False
                 else:
                     self.current_job_item[1]() # cancel function
                     j_id = int(time.time())
+                    self.jobs[j_id] = False
                     cancel_f = self.worker.do_detect_lmk(j_id, index_list, update_when_finished_cur_image)
                     self.current_job_item = (j_id , cancel_f)
-                    self.jobs[j_id] = False
-            except:
+            except Exception as e :
                 lab("this funtionality is not allowed. because meta file is not loaded", 2000)
-                
+                lab(str(e), 2000)
+        def detect_current():
+            detect()
+
         def detect_all():
             lab = self.pp.get_status_show_message()
 
@@ -665,7 +639,7 @@ class InspectorWidget(QWidget):
 
 
         self.detect_all_button.clicked.connect(detect_all)
-        self.detect_button.clicked.connect(detect)
+        self.detect_button.clicked.connect(detect_current)
 
 
         def save_function():
@@ -844,7 +818,10 @@ class MyApp(QMainWindow):
             self.imagewidget.set_image_index(i)
             self.imagewidget.reload_image()
             self.imagewidget.reload_lmk_to_view()
+        def load_meta():
+            self.imagewidget.reset_image_configuration()
         
+        self.inspectorwidget.signal.InspectorLoadMetaData.connect(load_meta)
         self.imagewidget.lmk_data_changed_signal.connect(self.data.changed_lmk_listner)
         self.inspectorwidget.signal.InspectorLmkDetectSignal.connect(self.imagewidget.reload_lmk_to_view)
         self.inspectorwidget.signal.InspectorIndexSignal.connect(wrapper)

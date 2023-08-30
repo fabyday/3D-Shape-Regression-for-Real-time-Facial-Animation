@@ -114,10 +114,20 @@ class Image:
     
     def is_landmark_detected(self):
         return self.lmk_detected
-    def calc_lankmark_from_dlib(self, detector,predictor, redetect=False):
+    def calc_lankmark_from_dlib(self, detector, predictor, redetect=False):
         import dlib
+        self.load()
         redetect = self.redetect_flag 
         self.redetect_flag = False
+        img = self.img
+        h,w, _ = img.shape
+        max_length = max(h, w)
+        if max_length > 1000:
+            max_length_ratio = max_length / 1000
+        else :
+            max_length_ratio = 1
+
+        img = cv2.resize(img, [int(w/max_length_ratio),int(h/max_length_ratio)])
         if not self.is_landmark_detected() or redetect:
             rects = detector(img, 1)
             for i, rect in enumerate(rects):
@@ -128,11 +138,12 @@ class Image:
                 shape = predictor(img, rect)
                 for j in range(68):
                     x, y = shape.part(j).x, shape.part(j).y
-                    self.lmk[j][0] = x
-                    self.lmk[j][1] = y
+                    self.lmk[j][0] = x*max_length_ratio
+                    self.lmk[j][1] = y*max_length_ratio
             self.lmk_detected = True
             return True
         return False
+    
     def load(self):
         if not self.is_loaded():
             self.img = cv2.imread(self.img_path)
@@ -140,7 +151,7 @@ class Image:
         return False
 
     def is_loaded(self):
-        return True if self.img != None else False
+        return False if self.img is None else True
     
     def size(self):
         height, width = self.img.shape[0], self.img.shape[1]
@@ -180,12 +191,6 @@ class ImageCollectionIterator:
         self.item_stack = tmp
         self.key_stack = []
     
-    def load_predictor(self, path=None):
-        if path == None :
-            path = "./shape_predictor_68_face_landmarks.dat"
-        self.detector = dlib.get_frontal_face_detector()
-        self.predictor = dlib.shape_predictor(path)
-
     def __iter__(self):
         return self 
     
@@ -208,7 +213,7 @@ class ImageCollection():
         self.meta, self.ext = dl.load_image_meta(osp.join(image_dir, "meta.yaml"))
         self.lazy_load = lazy_load
 
-        self.full_index, self.eye, self.contour, self.mouse = dl.load_ict_landmark(lmk_meta_file)
+        self.full_index, self.eye, self.contour, self.mouse, self.eyebrow = dl.load_ict_landmark(lmk_meta_file)
         self.lmk_size = len(self.full_index)
 
         self.img_data_infos = dict()
@@ -220,7 +225,18 @@ class ImageCollection():
                 img_path = osp.join(image_dir, img_key+self.ext)
                 expr_image_collection[img_key] = Image(img_path, self.lmk_size, img_key, expr_key, lazy_load=lazy_load)
                 self.img_data_list.append(expr_image_collection[img_key])
-                
+
+    
+    def load_predictor(self, path=None):
+        import dlib
+        if path == None :
+            path = "./shape_predictor_68_face_landmarks.dat"
+        self.detector = dlib.get_frontal_face_detector()
+        self.predictor = dlib.shape_predictor(path)
+
+    def get_detector_and_predictor(self):
+        return self.detector, self.predictor
+
     def __len__(self):
         return len(self.img_data_list)
 
