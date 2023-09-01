@@ -8,6 +8,10 @@ import scipy.optimize as opt
 import re
 import tqdm
 import camera_clib as clib
+
+import data_loader as dl
+
+
 lmk_idx = [
 1278,
 1272,
@@ -95,18 +99,20 @@ def natural_keys(text):
     return [ atof(c) for c in re.split(r'[+-]?([0-9]+(?:[.][0-9]*)?|[.][0-9]+)', text) ]
 
 class PreProp:
-    def __init__(self, data_dir, img_dir, mesh_dir):
+    def __init__(self, meta_dir, mesh_dir):
         
         self.proj = np.identity(4)
         self.rigid_trans = np.identity(4)
-        self.data_dir = data_dir
-        self.img_dir = img_dir
+        self.meta_location = meta_dir 
+
+        self.img_meta, self.img_root, self.img_file_ext,  = dl.load_extracted_lmk_meta(self.meta_location)
+
         self.mesh_dir = mesh_dir
 
 
 
     def build(self, cutter = None):
-        imgs, lmks_2d = self.load_data()
+        imgs = self.load_data()
         meshes = self.load_mesh(cutter)
 
     def load_mesh(self, cutter = None):
@@ -141,17 +147,10 @@ class PreProp:
 
     def load_data(self):
         extension = [".jpeg", ".png", ".jpg"]
-        lmk_data_files = glob.glob(osp.join(self.data_dir, "**.txt"))
-        print("self.img_dir", self.img_dir)
-        img_data_files = [name for ext in extension for name in glob.glob(osp.join(self.img_dir,"**"+ext)) ]
-        self.images = []
-        for fname in img_data_files:
-            self.images.append(cv2.imread(fname))
 
-        self.lmks = []
-        for fname in lmk_data_files:
+        def read_lmk_meta(path):
             lmk = []
-            with open(fname, "r") as fp: 
+            with open(path, "r") as fp: 
                 while True:
                     ss = fp.readline()
                     if not ss:
@@ -159,16 +158,32 @@ class PreProp:
                     ss = ss.rstrip("\n")
                     x, y = ss.split(" ")
                     lmk.append([float(x),float(y)])
-            self.lmks.append(lmk)
-        return self.images, self.lmks 
+            return lmk
 
-    def fit_all_feature(self):
-        pass
-    def fit_identity(self):
-        #fix all feature except identity
-        pass
+        self.img_meta.keys()
 
-    def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
+
+        self.img_and_info = dict()
+        self.img_list = []
+        for key in self.img_meta.keys():
+            category = self.img_and_info.get(key, None)
+            meta_item = self.img_meta[key] # into category
+            if category == None :
+                self.img_and_info[key] = []
+                category = self.img_and_info[key]
+            
+            for meta_data in meta_item:
+                meta_data['landmark']
+                name = meta_data['name']
+                lmk_data = read_lmk_meta(meta_data['landmark'])
+                img_data = cv2.imread(osp.join(self.img_root, name+self.img_file_ext))
+                img_data = {"name" : name, "lmk_data" : lmk_data, "img_data": img_data}
+                self.img_list.append(img_data)
+                category.append(img_data)
+
+        return self.img_list
+
+    def shape_fit(self, id_meshes, expr_meshes, lmk_idx):
         # Q = clib.calibrate('./images/checker4/*.jpg')
         # iteratively fit shapes
         # it consists with 2 phases.
@@ -177,7 +192,9 @@ class PreProp:
         # then why we should iterate optimization, 
         # The main reason why we calculate weights is find contour points and fit them to real face.
         # 
-
+        
+        #lmks_2d, images
+        
         neutral = self.neutral_mesh_v
         neutral_bar = neutral[lmk_idx, :]
 
@@ -429,12 +446,24 @@ class PreProp:
                         fp.write("expr_weight : \n")
                         np.savetxt(fp,exp_weight.reshape(id_weight.size, -1)[iii].reshape(1,-1), fmt = "%3.3f")
 
+    def extract_train_set_blendshapes(train_set_images_lmks, neutral_pose, blendshapes):
+        """
+            this method use shape_fit method's actor(user)-specific blendshapes result.
+            neutral pose : user-specific neutral pose
+            blendshapes : user specific blendshapes
+            ===========================================================================
+            return
+                weights that are extracted from user-specific blendshapes.
+        """
+        v_size, dim = neutral_pose.shape
+        b_size, _, _ = blendshapes
+
 
 
         
 if __name__ == "__main__":
 
-    p = PreProp("lmks", "images", "prep_data")
+    p = PreProp("landmark", "images", "prep_data")
     p.build(3)
     print(len(lmk_idx))
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)

@@ -32,3 +32,11 @@ def load_image_meta(name):
 
     return meta, ext
 
+
+
+def load_extracted_lmk_meta(name):
+    raw_meta = get_yaml_data(name)
+    file_ext = raw_meta['meta']['file_ext']
+    image_root = raw_meta['meta']['images_root']
+    images = raw_meta['meta']['images_name']
+    return images, image_root, file_ext

@@ -8,6 +8,7 @@ import scipy.optimize as opt
 import re
 import tqdm
 import camera_clib as clib
+import data_loader as dl
 lmk_idx = [
 1278,
 1272,
@@ -95,18 +96,20 @@ def natural_keys(text):
     return [ atof(c) for c in re.split(r'[+-]?([0-9]+(?:[.][0-9]*)?|[.][0-9]+)', text) ]
 
 class PreProp:
-    def __init__(self, data_dir, img_dir, mesh_dir):
+    def __init__(self, meta_dir, mesh_dir):
         
         self.proj = np.identity(4)
         self.rigid_trans = np.identity(4)
-        self.data_dir = data_dir
-        self.img_dir = img_dir
+        self.meta_location = meta_dir 
+
+        self.img_meta, self.img_root, self.img_file_ext,  = dl.load_extracted_lmk_meta(self.meta_location)
+
         self.mesh_dir = mesh_dir
 
 
 
     def build(self, cutter = None):
-        imgs, lmks_2d = self.load_data()
+        imgs = self.load_data()
         meshes = self.load_mesh(cutter)
 
     def load_mesh(self, cutter = None):
@@ -141,17 +144,10 @@ class PreProp:
 
     def load_data(self):
         extension = [".jpeg", ".png", ".jpg"]
-        lmk_data_files = glob.glob(osp.join(self.data_dir, "**.txt"))
-        print("self.img_dir", self.img_dir)
-        img_data_files = [name for ext in extension for name in glob.glob(osp.join(self.img_dir,"**"+ext)) ]
-        self.images = []
-        for fname in img_data_files:
-            self.images.append(cv2.imread(fname))
 
-        self.lmks = []
-        for fname in lmk_data_files:
+        def read_lmk_meta(path):
             lmk = []
-            with open(fname, "r") as fp: 
+            with open(path, "r") as fp: 
                 while True:
                     ss = fp.readline()
                     if not ss:
@@ -159,10 +155,34 @@ class PreProp:
                     ss = ss.rstrip("\n")
                     x, y = ss.split(" ")
                     lmk.append([float(x),float(y)])
-            self.lmks.append(lmk)
-        return self.images, self.lmks 
+            return lmk
 
-    def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
+        self.img_meta.keys()
+
+
+        self.img_and_info = dict()
+        self.img_list = []
+        for key in self.img_meta.keys():
+            category = self.img_and_info.get(key, None)
+            meta_item = self.img_meta[key] # into category
+            if category == None :
+                self.img_and_info[key] = []
+                category = self.img_and_info[key]
+            
+            for meta_data in meta_item:
+                meta_data['landmark']
+                name = meta_data['name']
+                lmk_data = read_lmk_meta(meta_data['landmark'])
+                img_data = cv2.imread(osp.join(self.img_root, name+self.img_file_ext))
+                img_data = {"name" : name, "lmk_data" : lmk_data, "img_data": img_data}
+                self.img_list.append(img_data)
+                category.append(img_data)
+
+        return self.img_list
+    
+    
+    # def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
+    def shape_fit(self, id_meshes, expr_meshes, lmk_idx):
         # Q = clib.calibrate('./images/checker4/*.jpg')
         # extract actor-specific blendshapes
         # iteratively fit shapes
@@ -184,7 +204,7 @@ class PreProp:
         expr_bar = expr[..., lmk_idx, :]
         expr_num, _,_ = expr.shape
         
-        lmks_2d = np.array(lmks_2d)
+        # lmks_2d = np.array(lmks_2d)
 
         def get_combine_bar_model(w_i, w_e):
             nonlocal neutral_bar, expr_bar, ids_bar
@@ -334,37 +354,47 @@ class PreProp:
                 lmks : all images lmk pts
             """
             nonlocal ids_bar, expr_bar, neutral_bar # v_size, 3 
-            assert(lmk_size >= 1, "lmk size is not validate.")
-            assert(expr_weights >= 1)
+            # assert(lmk_size >= 1, "lmk size is not validate.")
+            assert(len(expr_weights) >= 1)
 
             v_size, dim = neutral_bar.shape
             id_size, _, _ = ids_bar.shape 
-            expr_size, _, _ = expr_bar
+            expr_size, _, _ = expr_bar.shape
 
             expr_t = np.transpose(expr_bar, [2, 1, 0])
             expr_t = expr_t.reshape(dim, -1)
             id_t = np.transpose(ids_bar, [2,1,0])
             id_t = id_t.reshape(dim, -1)
 
-
-            A = np.zeros_like()
-            b = np.zeros_like(lmks[0])
+            lmk_size = np.array(lmks[0]['lmk_data']).size
+            A = np.zeros((lmk_size + id_size, id_size))
+            b = np.zeros((lmk_size + id_size, 1))
+            # A = np.zeros((lmk_2d.size + id_size, id_size))
+            # b = np.zeros_like(np.array(lmks[0]['lmk_data']).size + id_size)
             for lmk, scale, cam_rot, cam_tvec, expr_weight in zip(lmks, scales, cam_rots, cam_tvecs, expr_weights) :
+                lmk = np.array(lmk['lmk_data'])
+
                 cam_rot = cam_rot[:2, :]
-                proj_neutral = cam_rot @ neutral.T
+                proj_neutral = cam_rot @ neutral_bar.T
                 proj_neutral = proj_neutral.T # v_size, 3
                 proj_expr = cam_rot @ expr_t
                 exact_expr = proj_expr.reshape(-1, expr_size) @ expr_weight
                 exact_expr = exact_expr.reshape(-1, v_size).T # v_size, 3
-                proj_id = cam_rot @ ids_bar
+                proj_id = cam_rot @ id_t
                 proj_id = proj_id.reshape(-1, id_size)
-                tmp_b = lmk - scale*(exact_expr + proj_neutral + cam_tvecs[:2])
-                b += tmp_b 
-                A += scale*proj_id
+                tmp_b = lmk - scale*(exact_expr + proj_neutral + cam_tvec[:2].T)
+                b[:lmk_2d.size, :] += tmp_b.reshape(-1, 1)
+                A[:lmk_2d.size, :] += scale*proj_id
             
+
+            # regularization
+            reg_weight = 100
+            for i in range(id_size):
+                A[lmk_2d.size + i, i] = reg_weight
+                b[lmk_2d.size + i, 0] = 0
             res_id_weight = np.linalg.lstsq(A, b) 
 
-            return res_id_weight 
+            return res_id_weight[0]
 
 
 
@@ -395,13 +425,19 @@ class PreProp:
 
             # phase 1 
             # calculate every images expr_weights
-            for index in tqdm.tqdm(range(len(lmks_2d))):
+            
+            # for index in tqdm.tqdm(range(len(lmks_2d))):
+            for index in tqdm.tqdm(range(len(self.img_list))):
+                
+                img = self.img_list[index]['img_data']
+                lmk_2d = np.array(self.img_list[index]['lmk_data'])
+
                 id_weight = np.zeros((id_num, 1))
                 exp_weight = np.zeros((expr_num, 1))
-                sel_lmk = lmks_2d[index]
+                sel_lmk = lmk_2d
                 
                 verts_3d = get_combine_bar_model(id_weight, exp_weight)
-                scale, rot, tvecs = estimate_camera(sel_lmk, verts_3d, images[index]) # camera matrix.(not homogenious)
+                scale, rot, tvecs = estimate_camera(sel_lmk, verts_3d, img) # camera matrix.(not homogenious)
                 
                 cam_scales.append(scale)
                 cam_rots.append(rot)
@@ -409,51 +445,85 @@ class PreProp:
 
                 id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
                 expr_weights.append(exp_weight)
+                
+                path_name = osp.join("testdir", str(index))
+                if not os.path.exists(path_name):
+                    os.makedirs(path_name)
+                vv = get_combine_model(id_weight, exp_weight)
+                igl.write_triangle_mesh(os.path.join(path_name, "opt1" + ".obj"), vv, self.neutral_mesh_f)
 
             # phase 2
             # calculate exact id_weights and contour(optional)
-            res_id_weight = id_weight_fit(lmks_2d, cam_scales, cam_rots, cam_tvecs, expr_weights)
+            res_id_weight = id_weight_fit(self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
             id_weight = res_id_weight
 
-        for index in tqdm.tqdm(range(len(lmks_2d))):
-            img = copy.deepcopy(images[index])
+            
+            path_name = osp.join("testdir", "iden")
+            if not os.path.exists(path_name):
+                os.makedirs(path_name)
+            vv = get_combine_model(id_weight, np.zeros_like(exp_weight))
+            igl.write_triangle_mesh(os.path.join(path_name, "opt2" + ".obj"), vv, self.neutral_mesh_f)
 
-            id_weight = np.zeros((id_num, 1))
-            exp_weight = np.zeros((expr_num, 1))
-            verts_3d = get_combine_bar_model(id_weight, exp_weight)    
-            draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), img)
-            img = resize(img, 800)
-            cv2.imshow("test", img)
-            cv2.waitKey(0)
-            for i in tqdm.tqdm(range(iter_num)):
-
-                verts_3d = get_combine_bar_model(id_weight, exp_weight)
-                sel_lmk = lmks_2d[index]
-                if i == 0:
-                    scale, rot, tvecs = estimate_camera(sel_lmk, verts_3d, images[index]) # camera matrix.(not homogenious)
-                else:
-                    scale, rot, tvecs = estimate_camera(sel_lmk, verts_3d, images[index]) # camera matrix.(not homogenious)
-                img = copy.deepcopy(images[index])
-                draw_circle(transform_lm3d(verts_3d,scale, rot, tvecs), img, (255, 0, 0))
-                draw_circle(sel_lmk, img, colors=(0.0,0.0,255))
-
+            for index in tqdm.tqdm(range(len(self.img_list))):
+                
+                img = copy.deepcopy(self.img_list[index]['img_data'])
+                exp_weight = expr_weights[index]
+                draw_circle(np.array(self.img_list[index]['lmk_data']), img, (0,0,255))
                 img = resize(img, 800)
-                cv2.imshow("test", img)
-                cv2.waitKey(1000)
-                # proj_all_lm3d = transform_lm3d(verts_3d,rot, tvecs)
-                id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
                 path_name = osp.join("testdir", str(index))
-                vv = get_combine_model(np.zeros_like(id_weight), np.zeros_like(exp_weight))
-                igl.write_triangle_mesh(os.path.join(path_name, "init" + ".obj"), vv, self.neutral_mesh_f)
-                vv = get_combine_model(id_weight, exp_weight)
                 if not os.path.exists(path_name):
                     os.makedirs(path_name)
-                igl.write_triangle_mesh(os.path.join(path_name, str(i) + ".obj"), vv, self.neutral_mesh_f)
-                with open(osp.join(path_name, str(i)+".txt"), "w") as fp:
-                    for iii, idw in enumerate(id_weight.reshape(-1)):
-                        fp.write("id_weight : " + str(idw)+"\n")
-                        fp.write("expr_weight : \n")
-                        np.savetxt(fp,exp_weight.reshape(id_weight.size, -1)[iii].reshape(1,-1), fmt = "%3.3f")
+                vv = get_combine_model(id_weight, exp_weight)
+                cv2.imwrite(osp.join(path_name, "img.jpeg"), img)
+                igl.write_triangle_mesh(os.path.join(path_name, "opt2" + ".obj"), vv, self.neutral_mesh_f)
+
+
+        # for index in tqdm.tqdm(range(len(lmks_2d))):
+        for index in tqdm.tqdm(range(len(self.img_list))):
+            img = self.img_list[index]['img_data']
+            truth = copy.deepcopy(img)
+            test = copy.deepcopy(img)
+            sel_lmk = np.array(self.img_list[index]['lmk_data'])
+            
+            exp_weight = expr_weights[index]
+            verts_3d = get_combine_bar_model(id_weight, exp_weight)
+            draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
+            draw_circle(sel_lmk, truth, (0,0,255))
+            truth = resize(truth, 800)
+            test = resize(test, 800)
+            show_img = np.concatenate([truth, test], 1)
+            cv2.imshow("test", show_img)
+            cv2.waitKey(100)
+            
+            path_name = osp.join("testdir", str(index))
+            if not os.path.exists(path_name):
+                os.makedirs(path_name)
+            vv = get_combine_model(id_weight, exp_weight)
+            igl.write_triangle_mesh(os.path.join(path_name, "test" + ".obj"), vv, self.neutral_mesh_f)
+            # for index in tqdm.tqdm(range(len(self.img_list))):
+
+                # verts_3d = get_combine_bar_model(id_weight, exp_weight)
+                # img = copy.deepcopy(self.img_list[index]['img_data'])
+                # draw_circle(transform_lm3d(verts_3d,scale, rot, tvecs), img, (255, 0, 0))
+                # draw_circle(sel_lmk, img, colors=(0.0,0.0,255))
+
+                # img = resize(img, 800)
+                # cv2.imshow("test", img)
+                # cv2.waitKey(1000)
+                # # proj_all_lm3d = transform_lm3d(verts_3d,rot, tvecs)
+                # # id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
+                # path_name = osp.join("testdir", str(index))
+                # # vv = get_combine_model(np.zeros_like(id_weight), np.zeros_like(exp_weight))
+                # # igl.write_triangle_mesh(os.path.join(path_name, "init" + ".obj"), vv, self.neutral_mesh_f)
+                # vv = get_combine_model(id_weight, exp_weight)
+                # if not os.path.exists(path_name):
+                #     os.makedirs(path_name)
+                # igl.write_triangle_mesh(os.path.join(path_name, str(i) + ".obj"), vv, self.neutral_mesh_f)
+                # with open(osp.join(path_name, str(i)+".txt"), "w") as fp:
+                #     for iii, idw in enumerate(id_weight.reshape(-1)):
+                #         fp.write("id_weight : " + str(idw)+"\n")
+                #         fp.write("expr_weight : \n")
+                #         np.savetxt(fp,exp_weight.reshape(id_weight.size, -1)[iii].reshape(1,-1), fmt = "%3.3f")
 
     def extract_train_set_blendshapes(train_set_images_lmks, neutral_pose, blendshapes):
         """
@@ -475,9 +545,9 @@ class PreProp:
 
         
 if __name__ == "__main__":
-
-    p = PreProp("lmks", "images", "prep_data")
+    p = PreProp("landmark/meta.yaml", "prep_data")
     p.build(3)
     print(len(lmk_idx))
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.lmks,p.images, p.id_meshes, p.expr_meshes, lmk_idx)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx)
+
