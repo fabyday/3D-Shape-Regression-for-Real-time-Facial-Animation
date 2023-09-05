@@ -7,8 +7,12 @@ import igl
 import scipy.optimize as opt
 import re
 import tqdm
+import scipy.spatial as sp
 import camera_clib as clib
 import data_loader as dl
+import open3d as o3d
+import open3d.visualization.rendering as rendering
+
 lmk_idx = [
 1278,
 1272,
@@ -96,14 +100,14 @@ def natural_keys(text):
     return [ atof(c) for c in re.split(r'[+-]?([0-9]+(?:[.][0-9]*)?|[.][0-9]+)', text) ]
 
 class PreProp:
-    def __init__(self, meta_dir, mesh_dir):
+    def __init__(self, meta_dir, mesh_dir, lmk_meta = "./ict_lmk_info.yaml"):
         
         self.proj = np.identity(4)
         self.rigid_trans = np.identity(4)
         self.meta_location = meta_dir 
-
+        self.lmk_meta_location = lmk_meta
         self.img_meta, self.img_root, self.img_file_ext,  = dl.load_extracted_lmk_meta(self.meta_location)
-
+        self.full_index, self.eye, self.contour, self.mouse, self.eyebrow, self.nose  = dl.load_ict_landmark(lmk_meta)
         self.mesh_dir = mesh_dir
 
 
@@ -120,8 +124,8 @@ class PreProp:
         identity_mesh_name = identity_mesh_name[:cutter]
         self.meshes = []
         self.f = None 
+        mesh_collect = []
         for id_file_path in tqdm.tqdm(identity_mesh_name):
-            mesh_collect = []
             id_name = osp.basename(id_file_path)
             
             v, _ = igl.read_triangle_mesh(id_file_path)
@@ -132,6 +136,7 @@ class PreProp:
 
         expr_paths = glob.glob(osp.join(root_dir, "shapes", "generic_neutral_mesh", "**.obj"))
         expr_paths.sort(key= natural_keys)
+        mesh_collect = []
         for expr_path in tqdm.tqdm(expr_paths, leave=False):
             v, f = igl.read_triangle_mesh(expr_path)
             mesh_collect.append(v)
@@ -192,22 +197,29 @@ class PreProp:
         # then why we should iterate optimization, 
         # The main reason why we calculate weights is find contour points and fit them to real face.
         # 
+        
+        lmk_idx = np.array(lmk_idx)
+        lmk_idx_list = np.stack([lmk_idx for _ in range(len(self.img_list))],axis=0)
 
         neutral = self.neutral_mesh_v
-        neutral_bar = neutral[lmk_idx, :]
+        # neutral_bar = neutral[lmk_idx, :]
 
         ids = np.array(id_meshes)
-        ids_bar = ids[..., lmk_idx, :]
+        ids -= np.expand_dims(neutral, axis=0)
+        # ids_bar = ids[..., lmk_idx, :]
         id_num,_,_ = ids.shape
 
+
         expr = np.array(expr_meshes)
-        expr_bar = expr[..., lmk_idx, :]
+        expr -= np.expand_dims(neutral, axis=0)
+        # expr_bar = expr[..., lmk_idx, :]
         expr_num, _,_ = expr.shape
         
         # lmks_2d = np.array(lmks_2d)
 
-        def get_combine_bar_model(w_i, w_e):
-            nonlocal neutral_bar, expr_bar, ids_bar
+        # def get_combine_bar_model( w_i, w_e):
+            # nonlocal neutral_bar, expr_bar, ids_bar
+        def get_combine_bar_model(neutral_bar,ids_bar, expr_bar, w_i, w_e):
             expr_num, expr_v_size, expr_dim = expr_bar.shape
             id_num, id_v_size, id_dim = ids_bar.shape 
 
@@ -306,8 +318,9 @@ class PreProp:
         def transform_lm3d(v, scale, cam_rot, cam_tvec):
             return (scale*(cam_rot[:2, :]@v.T + cam_tvec[:2,:])).T
         
-        def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100): # phase 1 
-            nonlocal ids_bar, expr_bar, neutral_bar
+        # def estimate_shape_coef(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100): # phase 1 
+            # nonlocal ids_bar, expr_bar, neutral_bar
+        def estimate_shape_coef(ids_bar, expr_bar, neutral_bar, scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100): # phase 1 
             neutral = neutral_bar
             id_num, id_v_size, id_dim = ids_bar.shape
             expr_num, expr_v_size, expr_dim = expr_bar.shape
@@ -349,30 +362,148 @@ class PreProp:
             return id_coef, expr_coef
 
 
-        def id_weight_fit(lmks, scales, cam_rots, cam_tvecs, expr_weights): # phase2
+        # def expr_weight_fit(scale, cam_rot, cam_tvecs, lmk_2d, reg_weight = 100):
+            # nonlocal ids_bar, expr_bar, neutral_bar
+        def expr_weight_fit(neutral_bar, ids_bar, expr_bar, scale, cam_rot, cam_tvecs, lmk_2d, id_weight, reg_weight = 100):
+            neutral = neutral_bar
+            expr_num, expr_v_size, expr_dim = expr_bar.shape
+            expr_size = expr_num 
+            
+            datas = expr_bar
+            datas = np.transpose(datas, [2, 1, 0])
+            cam_rot = cam_rot[:2, :]
+            dim, v_sizes, num = datas.shape
+            datas = scale*cam_rot@datas.reshape(dim, v_sizes*num)
+            datas = datas.reshape(2, v_sizes, num)
+            datas = np.transpose(datas,[2,1,0])
+            proj_neutral = cam_rot @ neutral.T
+
+            
+            A = np.zeros((lmk_2d.size + expr_size, expr_size))
+            b = np.zeros((lmk_2d.size + expr_size, 1))
+            
+            id_num, id_v_size, id_dim = ids_bar.shape
+            reshaped_id_bar = np.transpose(ids_bar, [2, 1, 0])
+            reshaped_id_bar = reshaped_id_bar.reshape(id_dim, id_v_size*id_num)
+            proj_id = cam_rot @ reshaped_id_bar
+            exact_id = proj_id.reshape(-1, id_num) @ id_weight
+            exact_id = exact_id.reshape(-1, id_v_size).T # v_size, 2
+
+
+            # main problem
+            num, v_size, dim = datas.shape
+            A[:lmk_2d.size, :] = datas.reshape(num, v_size*dim).T
+            test = scale*(proj_neutral.T + cam_tvecs[:2].T)
+            # tmp_b = lmk_2d - scale*(proj_neutral.T + cam_tvecs[:2].T)
+            tmp_b = lmk_2d - scale*(exact_id + proj_neutral.T + cam_tvecs[:2].T)
+            tmp_b = tmp_b.reshape(-1, 1)
+            b[:lmk_2d.size, :] = tmp_b
+            for i in range(expr_size):
+                A[lmk_2d.size + i, i] = reg_weight
+                b [lmk_2d.size + i, 0] = 0
+            # add reg weight
+            
+            #solve
+
+            coef = np.linalg.lstsq(A, b)
+            expr_coef = coef[0]
+            # coef = opt.nnls(A,b.reshape(-1))
+            # id_coef = coef[0][ :id_size]
+            # expr_coef = coef[0][id_size:]
+            return expr_coef
+
+        def jointly_weight_fit(neutral, ids, exprs, sel_lmk_idx_list, lmks, scales, cam_rots, cam_tvecs, reg_weight = 100):
+            # fitting multi image that share same expression.
+            assert(len(sel_lmk_idx_list) == len(lmks))
+            neutral_bar = neutral[sel]
+            neutral = neutral_bar
+            expr_num, expr_v_size, expr_dim = expr_bar.shape
+            expr_size = expr_num 
+            
+            datas = expr_bar
+            datas = np.transpose(datas, [2, 1, 0])
+            cam_rot = cam_rot[:2, :]
+            dim, v_sizes, num = datas.shape
+            datas = scale*cam_rot@datas.reshape(dim, v_sizes*num)
+            datas = datas.reshape(2, v_sizes, num)
+            datas = np.transpose(datas,[2,1,0])
+            proj_neutral = cam_rot @ neutral.T
+
+            img_num = len(lmks)
+            A = np.zeros((lmk_2d.size(img_num) + expr_size, expr_size))
+            b = np.zeros((lmk_2d.size + expr_size, 1))
+            
+            id_num, id_v_size, id_dim = ids_bar.shape
+            reshaped_id_bar = np.transpose(ids_bar, [2, 1, 0])
+            reshaped_id_bar = reshaped_id_bar.reshape(id_dim, id_v_size*id_num)
+            proj_id = cam_rot @ reshaped_id_bar
+            exact_id = proj_id.reshape(-1, id_num) @ id_weight
+            exact_id = exact_id.reshape(-1, id_v_size).T # v_size, 2
+
+
+            # main problem
+            num, v_size, dim = datas.shape
+            A[:lmk_2d.size, :] = datas.reshape(num, v_size*dim).T
+            test = scale*(proj_neutral.T + cam_tvecs[:2].T)
+            # tmp_b = lmk_2d - scale*(proj_neutral.T + cam_tvecs[:2].T)
+            tmp_b = lmk_2d - scale*(exact_id + proj_neutral.T + cam_tvecs[:2].T)
+            tmp_b = tmp_b.reshape(-1, 1)
+            b[:lmk_2d.size, :] = tmp_b
+            for i in range(expr_size):
+                A[lmk_2d.size + i, i] = reg_weight
+                b [lmk_2d.size + i, 0] = 0
+            # add reg weight
+            
+            #solve
+
+            coef = np.linalg.lstsq(A, b)
+            expr_coef = coef[0]
+            # coef = opt.nnls(A,b.reshape(-1))
+            # id_coef = coef[0][ :id_size]
+            # expr_coef = coef[0][id_size:]
+            return expr_coef
+
+        # def id_weight_fit(lmks, scales, cam_rots, cam_tvecs, expr_weights): # phase2
+            # nonlocal ids_bar, expr_bar, neutral_bar # v_size, 3 
+        def id_weight_fit(neutral, ids, exprs, sel_lmk_idx_list, lmks, scales, cam_rots, cam_tvecs, expr_weights): # phase2
             """
                 lmks : all images lmk pts
             """
-            nonlocal ids_bar, expr_bar, neutral_bar # v_size, 3 
             # assert(lmk_size >= 1, "lmk size is not validate.")
             assert(len(expr_weights) >= 1)
+            def get_bars(neutral, ids, exprs, sel_lmk_idx):
+                neutral_bar = neutral[sel_lmk_idx, :]
+                ids_bar = ids[:, sel_lmk_idx, :]
+                expr_bar = exprs[:, sel_lmk_idx, :]
+                return neutral_bar, ids_bar, expr_bar
+            
 
-            v_size, dim = neutral_bar.shape
-            id_size, _, _ = ids_bar.shape 
-            expr_size, _, _ = expr_bar.shape
+            def expr_id_reshaper(v):
+                num, v_size, dim = v.shape
+                expr_t = np.transpose(expr_bar, [2, 1, 0])
+                expr_t = expr_t.reshape(dim, -1)
+            
 
-            expr_t = np.transpose(expr_bar, [2, 1, 0])
-            expr_t = expr_t.reshape(dim, -1)
-            id_t = np.transpose(ids_bar, [2,1,0])
-            id_t = id_t.reshape(dim, -1)
+            v_size = len(lmk_idx_list[0])
+            _, dim = neutral.shape
+            id_size, _, _ = ids.shape 
+            expr_size, _, _ = exprs.shape
 
             lmk_size = np.array(lmks[0]['lmk_data']).size
-            A = np.zeros((lmk_size + id_size, id_size))
-            b = np.zeros((lmk_size + id_size, 1))
+            A = np.zeros((lmk_size*len(lmks) + id_size, id_size))
+            b = np.zeros((lmk_size*len(lmks) + id_size, 1))
             # A = np.zeros((lmk_2d.size + id_size, id_size))
             # b = np.zeros_like(np.array(lmks[0]['lmk_data']).size + id_size)
-            for lmk, scale, cam_rot, cam_tvec, expr_weight in zip(lmks, scales, cam_rots, cam_tvecs, expr_weights) :
-                lmk = np.array(lmk['lmk_data'])
+            for i, (sel_lmk_idx, lmk, scale, cam_rot, cam_tvec, expr_weight) in enumerate(zip(sel_lmk_idx_list, lmks, scales, cam_rots, cam_tvecs, expr_weights) ):
+                lmk = np.array(lmk['lmk_data']) 
+                neutral_bar, ids_bar, expr_bar = get_bars(neutral, ids, exprs, sel_lmk_idx)
+                    
+                expr_t = np.transpose(expr_bar, [2, 1, 0])
+                expr_t = expr_t.reshape(dim, -1)
+                id_t = np.transpose(ids_bar, [2,1,0])
+                id_t = id_t.reshape(dim, -1)
+
+
 
                 cam_rot = cam_rot[:2, :]
                 proj_neutral = cam_rot @ neutral_bar.T
@@ -383,8 +514,10 @@ class PreProp:
                 proj_id = cam_rot @ id_t
                 proj_id = proj_id.reshape(-1, id_size)
                 tmp_b = lmk - scale*(exact_expr + proj_neutral + cam_tvec[:2].T)
-                b[:lmk_2d.size, :] += tmp_b.reshape(-1, 1)
-                A[:lmk_2d.size, :] += scale*proj_id
+                # b[:lmk_2d.size, :] += tmp_b.reshape(-1, 1)
+                # A[:lmk_2d.size, :] += scale*proj_id
+                b[lmk_2d.size*i:lmk_2d.size*(i+1), :] += tmp_b.reshape(-1, 1)
+                A[lmk_2d.size*i:lmk_2d.size*(i+1), :] += scale*proj_id
             
 
             # regularization
@@ -412,23 +545,122 @@ class PreProp:
             new_h = h*ratio 
             img = cv2.resize(img, [int(new_h), int(width)])
             return img
+        
 
-        iter_num = 20
+        def find_contour(lmk2d, proj_3d_v):
+            hull = sp.ConvexHull(proj_3d_v)
+            convex_index = hull.vertices
+            kd = sp.cKDTree(proj_3d_v[convex_index, :])
+            d, idx = kd.query(lmk2d)
+            return convex_index[idx]
+
+        
+        def draw_cv(index, flag, id_weight, expr_weights):
+            img = self.img_list[index]['img_data']
+            truth = copy.deepcopy(img)
+            test = copy.deepcopy(img)
+            sel_lmk = np.array(self.img_list[index]['lmk_data'])
+            
+            exp_weight = expr_weights[index]
+            sel_index_list = lmk_idx_list[index]
+            verts_3d = get_combine_bar_model(neutral[sel_index_list, :], ids[:,sel_index_list,:], expr[:,sel_index_list,:], id_weight, exp_weight)
+            out_of_concern_idx = [i for i in range(len(neutral)) if i not in sel_index_list]
+            non_sel_mesh_v = get_combine_model(id_weight, exp_weight)
+            non_sel_mesh_v = non_sel_mesh_v[out_of_concern_idx]
+            # draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
+            non_sel_mesh_v = non_sel_mesh_v[::int(len(non_sel_mesh_v)//100),:]
+            draw_circle(transform_lm3d(non_sel_mesh_v, cam_scales[index],cam_rots[index],cam_tvecs[index]), test, (0,255,0))
+            draw_circle(transform_lm3d(verts_3d, cam_scales[index],cam_rots[index],cam_tvecs[index]), test, (0,0,255))
+            draw_circle(sel_lmk, truth, (255,0,0))
+            truth = resize(truth, 800)
+            test = resize(test, 800)
+            show_img = np.concatenate([truth, test], 1)
+            cv2.imshow("test", show_img)
+            
+            path_name = osp.join("testdir", str(index))
+            if not os.path.exists(path_name):
+                os.makedirs(path_name)
+            vv = get_combine_model(id_weight, exp_weight)
+            igl.write_triangle_mesh(os.path.join(path_name, "test" + ".obj"), vv, self.neutral_mesh_f)
+            if not flag:
+                key = cv2.waitKey(0)
+            else:
+                key = cv2.waitKey(100)
+
+            if key == ord('q'):
+                return False
+            elif key == ord('a'):
+                return True
+            else :
+                return True
+        
+
+
+        def draw_contour(img, lmk, new_contour, orig, flag):
+            draw_circle(lmk,img, colors=(255,0,0))
+            draw_circle(new_contour,img, colors=(0,0,255))
+            draw_circle(orig, img, colors=(0,255,255))
+            for i in range(len(new_contour) -1):
+                cv2.line(img, new_contour[i].astype(int), new_contour[i+1].astype(int), color=(0,255,0), thickness=3)
+
+            for i in range(len(orig) -1):
+                cv2.line(img, orig[i].astype(int), orig[i+1].astype(int), color=(255,255,0), thickness=3)
+            img= resize(img, 1500)
+            cv2.imshow("contour", img)
+            if not flag:
+                key = cv2.waitKey(0)
+            else:
+                key = cv2.waitKey(100)
+
+            if key == ord('q'):
+                return False
+            elif key == ord('a'):
+                return True
+            else :
+                return True
+
+        # h,w, _ = resize(copy.deepcopy(self.img_list[0]['img_data']), 800).shape
+        # tm = o3d.geometry.TriangleMesh(vv, self.neutral_mesh_f)
+        # tm.compute_vertex_normals()
+        # render = rendering.OffscreenRenderer(w, h)
+        # render.setup_camera(60.0)
+        # render.scene.scene.enable_sun_light(True)
+        # render.scene.show_axes(True)
+
+        # renderer = render.OffscreenRenderer(w, h, point_size=1.0)
+        # render_flag = render.RenderFlags.RGBA
+        # scene = render.Scene(ambient_light=[0.02, 0.02, 0.02], bg_color=[1.0, 1.0, 1.0])
+        # import trimesh
+        # tm = trimesh.Trimesh(vv,self.neutral_mesh_f)
+        # cam = render.PerspectiveCamera(yfov=np.pi / 3.0, aspectRatio=1.414)        
+        # light = render.PointLight(color=[1.0, 1.0, 1.0], intensity=2.0)
+        # mesh = render.Mesh.from_trimesh(tm)
+        # nm = render.Node(mesh=mesh, matrix=)
+        # nc = render.Node(camera=cam, matrix=np.eye(4,4))
+        # nl = render.Node(ligh=light, matrix=np.eye(4,4))
+        # color, depth = renderer.render()
+
+        iter_num = 10
         expr_weights = []
         id_weight = np.zeros((id_num, 1))
+        time_t = True
         for i in tqdm.tqdm(range(iter_num)):
 
             cam_scales = []
             cam_rots = []
             cam_tvecs = []
             expr_weights.clear()
-
+            
             # phase 1 
             # calculate every images expr_weights
             
             # for index in tqdm.tqdm(range(len(lmks_2d))):
             for index in tqdm.tqdm(range(len(self.img_list))):
-                
+                sel_lmk_idx = lmk_idx_list[i]
+                ids_bar =         ids[ ..., sel_lmk_idx, : ]
+                expr_bar =       expr[ ..., sel_lmk_idx, : ]
+                neutral_bar = neutral[      sel_lmk_idx, : ]
+
                 img = self.img_list[index]['img_data']
                 lmk_2d = np.array(self.img_list[index]['lmk_data'])
 
@@ -436,15 +668,18 @@ class PreProp:
                 exp_weight = np.zeros((expr_num, 1))
                 sel_lmk = lmk_2d
                 
-                verts_3d = get_combine_bar_model(id_weight, exp_weight)
+                verts_3d = get_combine_bar_model(neutral_bar, ids_bar,expr_bar ,id_weight, exp_weight)
                 scale, rot, tvecs = estimate_camera(sel_lmk, verts_3d, img) # camera matrix.(not homogenious)
                 
                 cam_scales.append(scale)
                 cam_rots.append(rot)
                 cam_tvecs.append(tvecs)
 
-                id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
+                # id_weight, exp_weight = estimate_shape_coef(scale, rot, tvecs, sel_lmk) # phase1
+                # exp_weight = expr_weight_fit(scale, rot, tvecs, sel_lmk) # phase1
+                exp_weight = expr_weight_fit(neutral_bar, ids_bar, expr_bar, scale, rot, tvecs, sel_lmk, id_weight) # phase1
                 expr_weights.append(exp_weight)
+                time_t = draw_cv(index, time_t, id_weight,expr_weights)
                 
                 path_name = osp.join("testdir", str(index))
                 if not os.path.exists(path_name):
@@ -454,10 +689,26 @@ class PreProp:
 
             # phase 2
             # calculate exact id_weights and contour(optional)
-            res_id_weight = id_weight_fit(self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
-            id_weight = res_id_weight
+            # res_id_weight = id_weight_fit(self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
+            res_id_weight = id_weight_fit(neutral, ids, expr,lmk_idx_list ,self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
 
+            time_t = draw_cv(index, time_t,id_weight, expr_weights)
+
+            id_weight = res_id_weight
+            tmp_time_t = time_t
+            time_t = True
+            for index in range(len(self.img_list)):
+                verts_3d = get_combine_model(id_weight, exp_weight)
+                proj_3d_v = transform_lm3d(verts_3d, cam_scales[index],cam_rots[index],cam_tvecs[index])
+                sel_lmk_2d = np.array(self.img_list[index]['lmk_data'])
+                contour_lmk = sel_lmk_2d[ self.contour['full_index'] ]
+                new_contour_idx = find_contour(lmk2d = contour_lmk, proj_3d_v = proj_3d_v)
+                original_contour = lmk_idx_list[index][self.contour['full_index']]
+                lmk_idx_list[index][self.contour['full_index']] = new_contour_idx
+
+                time_t =  draw_contour(copy.deepcopy(self.img_list[index]['img_data']), sel_lmk_2d, proj_3d_v[new_contour_idx], proj_3d_v[original_contour], time_t)
             
+            time_t = tmp_time_t            
             path_name = osp.join("testdir", "iden")
             if not os.path.exists(path_name):
                 os.makedirs(path_name)
@@ -465,7 +716,6 @@ class PreProp:
             igl.write_triangle_mesh(os.path.join(path_name, "opt2" + ".obj"), vv, self.neutral_mesh_f)
 
             for index in tqdm.tqdm(range(len(self.img_list))):
-                
                 img = copy.deepcopy(self.img_list[index]['img_data'])
                 exp_weight = expr_weights[index]
                 draw_circle(np.array(self.img_list[index]['lmk_data']), img, (0,0,255))
@@ -475,8 +725,7 @@ class PreProp:
                     os.makedirs(path_name)
                 vv = get_combine_model(id_weight, exp_weight)
                 cv2.imwrite(osp.join(path_name, "img.jpeg"), img)
-                igl.write_triangle_mesh(os.path.join(path_name, "opt2" + ".obj"), vv, self.neutral_mesh_f)
-
+                igl.write_triangle_mesh(os.path.join(path_name, "opt2_iter_"+str(i) + ".obj"), vv, self.neutral_mesh_f)
 
         # for index in tqdm.tqdm(range(len(lmks_2d))):
         for index in tqdm.tqdm(range(len(self.img_list))):
@@ -486,14 +735,23 @@ class PreProp:
             sel_lmk = np.array(self.img_list[index]['lmk_data'])
             
             exp_weight = expr_weights[index]
-            verts_3d = get_combine_bar_model(id_weight, exp_weight)
-            draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
-            draw_circle(sel_lmk, truth, (0,0,255))
+            sel_index_list = lmk_idx_list[index]
+            verts_3d = get_combine_bar_model(neutral[sel_index_list, :], ids[:,sel_index_list,:], expr[:,sel_index_list,:], id_weight, exp_weight)
+            out_of_concern_idx = [i for i in range(len(neutral)) if i not in sel_index_list]
+            non_sel_mesh_v = get_combine_model(id_weight, exp_weight)
+            
+            # draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
+            draw_circle(transform_lm3d(verts_3d, cam_scales[index],cam_rots[index],cam_tvecs[index]), test, (0,0,255))
+            draw_circle(sel_lmk, truth, (255,0,0))
             truth = resize(truth, 800)
             test = resize(test, 800)
             show_img = np.concatenate([truth, test], 1)
             cv2.imshow("test", show_img)
-            cv2.waitKey(100)
+            key = cv2.waitKey(0)
+            if key == ord('q'):
+                break
+            elif key == ord('a'):
+                continue
             
             path_name = osp.join("testdir", str(index))
             if not os.path.exists(path_name):
@@ -546,7 +804,7 @@ class PreProp:
         
 if __name__ == "__main__":
     p = PreProp("landmark/meta.yaml", "prep_data")
-    p.build(3)
+    p.build()
     print(len(lmk_idx))
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
     p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx)
