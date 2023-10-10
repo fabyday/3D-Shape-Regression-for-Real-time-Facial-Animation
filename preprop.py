@@ -748,7 +748,7 @@ class PreProp:
                     cv2.imwrite(osp.join(path_name, "img_"+str(item_nu)+".jpeg"), img)
                     igl.write_triangle_mesh(os.path.join(path_name, "opt2_iter_"+str(iter_idx) + ".obj"), vv, self.neutral_mesh_f)
                 
-    def extract_train_set_blendshapes(train_set_images_lmks, neutral_pose, blendshapes):
+    def extract_train_set_blendshapes(train_set_images_lmks, neutral_pose, blendshapes): 
         """
             this method use shape_fit method's actor(user)-specific blendshapes result.
             neutral pose : user-specific neutral pose

@@ -13,6 +13,10 @@ import data_loader as dl
 import open3d as o3d
 import open3d.visualization.rendering as rendering
 
+import scipy 
+
+import scipy.optimize as opt
+
 lmk_idx = [
 1278,
 1272,
@@ -225,53 +229,7 @@ class PreProp:
 
     #     return Q        
     def find_fit_projection_mat(self, obj_func,neutral, ids, exprs, mesh_lmk_mapping_idx, id_weight, expr_weight, Q , R_t, lmk, max_focal_length = 100):
-        """
-        init_focal_length : pixel based focal length
-        """
-        
-        old_f = Q[0,0]
-        u = Q[0, -1]
-        v = Q[1, -1]
-        rot_v_T = R@v.T
-        rot_v_T[:-1, :] /= rot_v_T[-1, :]
-        rot_v_T = rot_v_T[:-1, :]
-        
-        lmk[:, 0] -= u
-        lmk[:, 1] -= v
-        
-
-
-        fx  = 0
-        fx_min = 0
-        fx_max = max_focal_length
-        def calc_Q(fx):
-
-            reQ = np.copy(Q)
-            reQ[0,0] = fx 
-            reQ[1,1] = fx 
-            return reQ
-        def calc_func(Q_cur, Q_prev):
-            f_current = obj_func(Q_cur, v, lmk)
-            f_prev = obj_func(Q_prev, v, lmk)
-            return f_current, f_prev
-        k = fx_max - fx_min
-        eps = 0.001
-        fx = fx + k
-
-        f_current, f_prev = calc_func(Q)
-        while True(abs(f_current - f_prev) <= eps ):
-            if f_prev >= f_current :
-                
-                f_current = calc_func(Q)
-
-
-            
-            f_current, f_prev = calc_func(Q)
-
-
-
-
-        return Q        
+        pass
         
     def convert_focal_length(w, h, mm_focal_length=36):
         """
@@ -321,7 +279,7 @@ class PreProp:
 
             reshaped_expr = expr_bar.reshape(expr_num, expr_v_size*expr_dim).T
             reshaped_id = ids_bar.reshape(id_num, id_v_size*id_dim).T
-            res = reshaped_id@w_i + reshaped_expr@w_e 
+            res = reshaped_id@w_i.reshape(-1,1) + reshaped_expr@w_e.reshape(-1,1)
             # res = res.reshape(id_dim, id_v_size).T
             res = res.reshape(id_v_size, id_dim)
             return neutral_bar + res
@@ -339,9 +297,12 @@ class PreProp:
             res = res.reshape(id_v_size, id_dim)
             return neutral + res
         
-        
-    
-
+        def get_bars(neutral, ids, exprs, sel_lmk_idx):
+            neutral_bar = neutral[sel_lmk_idx, :]
+            ids_bar = ids[:, sel_lmk_idx, :]
+            expr_bar = exprs[:, sel_lmk_idx, :]
+            return neutral_bar, ids_bar, expr_bar
+                    
         
         import copy 
         def draw_circle(v, img, colors = (1.0,0.0,0.0)):
@@ -355,8 +316,6 @@ class PreProp:
             img = cv2.resize(img, [int(new_h), int(width)])
             return img
         
-        def calc_Rt():
-            pass
 
         def find_contour(lmk2d, proj_3d_v):
             hull = sp.ConvexHull(proj_3d_v)
@@ -366,7 +325,7 @@ class PreProp:
             return convex_index[idx]
 
         
-        def draw_cv(index, expr_index, flag, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs):
+        def draw_cv(index, expr_index, flag, id_weight, expr_weights, Q_list, Rt_list):
             img = self.img_list[index]['img_data']
             truth = copy.deepcopy(img)
             test = copy.deepcopy(img)
@@ -380,8 +339,7 @@ class PreProp:
             non_sel_mesh_v = non_sel_mesh_v[out_of_concern_idx]
             # draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
             non_sel_mesh_v = non_sel_mesh_v[::int(len(non_sel_mesh_v)//100),:]
-            draw_circle(transform_lm3d(non_sel_mesh_v, cam_scales[index],cam_rots[index],cam_tvecs[index]), test, (0,255,0))
-            draw_circle(transform_lm3d(verts_3d, cam_scales[index],cam_rots[index],cam_tvecs[index]), test, (0,0,255))
+            draw_circle(add_Rt_to_pts(Q_list[index], Rt_list[index], verts_3d), test, (0,0,255))
             draw_circle(sel_lmk, truth, (255,0,0))
             truth = resize(truth, 800)
             test = resize(test, 800)
@@ -429,21 +387,188 @@ class PreProp:
                 return True
             else :
                 return True
+        
+        
+                
+        def get_Rt(theta_x, theta_y, theta_z, tx, ty, tz):
+            Rx = np.eye(3,3)
+            Ry = np.eye(3,3)
+            Rz = np.eye(3,3)
 
-        def coordinate_descent(cost_function, Q, init_x, y, iter_num, eps = 10e-7):
+            Rx[1,1] = np.cos(theta_x); Rx[1,2] = -np.sin(theta_x)
+            Rx[2,1] = np.sin(theta_x); Rx[2,2] = np.cos(theta_x)
+
+            Ry[0,0] = np.cos(theta_y); Ry[0,2] = np.sin(theta_y)
+            Ry[2,0] = -np.sin(theta_y); Ry[2,2] = np.cos(theta_y)
+            
+            Rz[0,0] = np.cos(theta_z); Rz[0,1] = -np.sin(theta_z)
+            Rz[1,0] = np.sin(theta_z); Rz[1,1] = np.cos(theta_z)
+
+            res = np.zeros((3,4))
+
+            res[:, -1] = np.array([tx, ty, tz])
+            res[:3, :3] =Rz@Ry@Rx
+
+            return res
+        
+
+        def decompose_Rt(Rt):
+            """
+            input : 
+                Z,y,x sequentialy
+            return 
+                x, y, z angle
+            see also https://en.wikipedia.org/wiki/Rotation_matrix
+            """
+            y_angle = np.arctan2(-1*Rt[2,0],np.sqrt(Rt[0,0]**2+Rt[1,0]**2))
+            x_angle = np.arctan2(Rt[2,1]/np.cos(y_angle),Rt[2,2]/np.cos(y_angle))
+            z_angle = np.arctan2(Rt[1,0]/np.cos(y_angle),Rt[0,0]/np.cos(y_angle))
+
+
+            return x_angle, y_angle, z_angle
+            
+        def add_Rt_to_pts(Q, Rt, x):
+            R = Rt[:3,:3]
+            t = Rt[:, -1, None]
+            xt = x.T
+            Rx = R @ xt 
+            Rxt = Rx+t
+            pj_Rxt = Q @ Rxt
+            res = pj_Rxt/pj_Rxt[-1, :]
+            return res[:2, :].T
+            
+
+        def id_weight_function(fixed_Q, fixed_Rt, nuetral_bar, ids_bar, exprs_bar, expr_weight_list, x, y):
+            
+            total_z = 0
+            for w_e in expr_weight_list:
+                verts3d = get_combine_bar_model(nuetral_bar, ids_bar, exprs_bar, x, w_e)
+                vers_2d = add_Rt_to_pts(fixed_Q, fixed_Rt, verts3d)  
+                z = vers_2d - y              
+                z = z.reshape(-1,1)
+                z = z.T@z 
+                total_z += z 
+            return total_z 
+
+        def default_cost_function(Q, Rt, neutral_bar, ids_bar, exprs_bar, id_weight, expr_weight, y):
+            # x := Q + Rt + expr weight
+
+            blended_pose = get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, expr_weight)
+
+            gen = add_Rt_to_pts(Q, Rt, blended_pose)
+            z = gen - y
+            new_z = z.reshape(-1, 1)
+            new_z = new_z.T @ new_z
+            return new_z
+
+
+        def expr_cost_function(Q, neutral_bar, ids_bar, exprs_bar, id_weight, x, y):
+            # x := Q + Rt + expr weight
+            r1, r2, r3, tx,ty, tz = x.ravel()[:6]
+            
+            pose_weight = x[6:, 0]
+
+            Rt = get_Rt(r1,r2,r3, tx,ty,tz)
+            blended_pose = get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, pose_weight)
+
+            gen = add_Rt_to_pts(Q, Rt, blended_pose)
+            z = gen - y
+            new_z = z.reshape(-1, 1)
+            new_z = new_z.T @ new_z
+            return new_z
+
+        def find_camera_matrix(x_3d, x_2d, guessed_projection_Qmat = None):
+            # P_{0} @ X - 
+            # 12 unknown
+            """
+                camera matrix P
+                [p1 p2  p3  p4 ]   [-p1-]
+                [p5 p6  p7  p8 ] = [-p2-]
+                [p9 p10 p11 p12]   [-p3-]
+                see detail : https://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
+            """
+
+            def to_homogeneous(x):
+                return np.concatenate([x, np.ones((len(x),1))], axis = -1)
+
+            def add_coeff_to_A(mat, x_3d, x_2d, idx):
+                r, c = mat.shape
+                X = x_3d[idx, :]
+                pts_2d = x_2d[idx, :]
+                x, y = pts_2d.ravel()
+                mat[idx*2, :4] = X
+                mat[idx*2+1, 4:8] = X
+                mat[idx*2, -4: ] = -x * X
+                mat[idx*2+1, -4: ] = -y * X
+            x_3d = to_homogeneous(x_3d)
+            # setup matrix A
+            mat = np.zeros((2*len(x_3d), 12))
+            for idx in range(len(x_3d)):
+                add_coeff_to_A(mat, x_3d, x_2d, idx)
+
+            u, s, vT = np.linalg.svd(mat)
+            sol = vT[-1, :]
+            
+            
+            # cam mat
+            mat_P = sol.reshape(3, 4)
+            
+            xxx = x_3d
+            xx = mat_P @ xxx.T
+            xx2 = xx/xx[-1,  :]
+            x2 = x_2d
+
+
+            if guessed_projection_Qmat is not None :
+                # if we know Q
+                Q = guessed_projection_Qmat
+                Qinv = np.linalg.inv(Q)
+                Rt = Qinv@mat_P
+            else:
+                # if we don't knonw
+                u,s, vT = np.linalg.svd(mat_P)
+                        
+                # c = vT[-1, :] 
+                c = vT[-1, :] 
+                c[:] /= c[-1]
+                c = c[:-1] #remove hormogeneous to 3d pts
+
+                M = mat_P[:3,:3]
+                K, R = scipy.linalg.rq(M)
+                Q = K
+
+                #solve flip problem
+                if Q[0,0] < 0:
+                    Q[0,0] *= -1
+                    R[0, :] *= -1
+                if Q[1,1] < 0:
+                    Q[1,1] *= -1
+                    R[1, :] *= -1
+                if Q[-1,-1] < 0:
+                    Q[:,-1]*=-1
+                    R[-1, :] *= -1
+                
+                # [R, -Rc]
+                # Rt = np.concatenate([R, -R@c.reshape(-1,1)[:-1, :]], axis = -1)
+                Rt = np.concatenate([R, -R@c.reshape(-1,1)], axis = -1)
+            print("gen P : \n", Q@Rt, "\norig : \n",mat_P)
+            return Q, Rt
+
+
+        def coordinate_descent(cost_function, init_x, y, iter_nums, eps = 10e-7):
             if len(init_x.shape) == 1 : 
                 init_x = init_x.reshape(-1, 1)
-            def cost_wrapper(x):
-                    cons = x[6:, :] # regularization term
-                    return cost_function(Q, neutral, pose, x, y) + cons.T@cons 
+
+            def cost_f(x):
+                return cost_function(x, y)
             
             def cost_grad_wrapper(ind):
                 def wrapper(x):
                     copied_x = np.copy(x)
                     copied_x[ind, 0] -= eps
-                    f_val = cost_wrapper(copied_x)
+                    f_val = cost_f(copied_x)
                     copied_x[ind, 0] += 2*eps
-                    f_h_val = cost_wrapper(copied_x)
+                    f_h_val = cost_f(copied_x)
                     gradient = (f_h_val - f_val)/(2*eps)
                     gradient_array = np.zeros_like(x)
                     gradient_array[ind, 0 ] = gradient
@@ -454,9 +579,9 @@ class PreProp:
                     for i in range(len(x)):
                         copied_x = np.copy(x)
                         copied_x -= eps
-                        f_val = cost_wrapper(copied_x)
+                        f_val = cost_f(copied_x)
                         copied_x[i, 0] += eps
-                        f_h_val = cost_wrapper(copied_x)
+                        f_h_val = cost_f(copied_x)
                         gradient = (f_h_val - f_val)/eps*2
                         grad_array[i, 0 ] = gradient
                     return grad_array.T         
@@ -465,18 +590,13 @@ class PreProp:
             x = np.copy(init_x)
             for iter_i in range(iter_nums):
                 for i in range(len(x)):
-                    f_val = cost_wrapper(x)
+                    f_val = cost_f(x)
                     # x[i, 0] += eps
                     sel_idx_grad_func, full_gradient_func = cost_grad_wrapper(i)
                     coord_grad = sel_idx_grad_func(x).T
                     gradient_direction = full_gradient_func(x).T
-                    # if np.abs(coord_grad[i]) < 1.88e-6: # if too small gradient value, line search can't find appropriate alpha.(they return None...)
-                        # continue
-                    # f_val_h = cost_function(neutral, x, y)
-                    # f_grad = (f_val_h-f_val)/eps
-                    # x[i, 0] -= eps
-                    re = opt.line_search(cost_wrapper, sel_idx_grad_func, x, -coord_grad)
-                    # re = opt.line_search(cost_wrapper, sel_idx_grad_func, x, -gradient_direction)
+ 
+                    re = opt.line_search(cost_f, sel_idx_grad_func, x, -coord_grad)
                     alpha = re[0]
                     # for safety. when we put too small, and opposite gradient direction into line_search, function will return None,
                     # this if prevent too small gradient.
@@ -489,55 +609,101 @@ class PreProp:
                     x[6:,0] = np.clip(x[6:, 0], 0.0, 1.0)
                     if i in [0,1,2]:
                         x[i] %= np.pi*2
-                    print("iter : ", iter_i, "i-th of w : ", i,"cost : ", f_val, "\nx", x.ravel(), "alpha : ", alpha, "")
+                print("iter : ", iter_i, "i-th of w : ", i,"cost : ", f_val, "\nx", x.ravel(), "alpha : ", alpha, "")
+                return x
 
         iter_num = 10
-        expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_and_info.keys()))]
+        # expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_and_info.keys()))]
+        expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_list))]
         id_weight = np.zeros((id_num, 1))
         time_t = True
         Q_list = [[] for _ in range(len(self.img_list))]
         Rt_list = [[] for _ in range(len(self.img_list))]
+        lmk_2d_list = [ info['lmk_data'] for info in self.img_list ]
+        
         for i in tqdm.tqdm(range(iter_num)):
             
             for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())):
                 sel_imgs = [info['img_data'] for info in item ]
                 lmk_2ds = np.array([info['lmk_data'] for info in item ])
-                
-                expr_Q_list = [ self.calc_cam_intrinsic_Q(0, info['img_data'].shape[1], info['img_data'].shape[0]) for info in item ]
-                expr_Rt_list = [calc_Rt() for info in item ] # TODO 
-
-
                 index_list =  [ info['index'] for info in item ]
                 sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
-                verts_3ds = [get_combine_bar_model( neutral[sel_lmk_idx, :], ids[:, sel_lmk_idx,:], expr[:, sel_lmk_idx, :], id_weight, expr_weights[key_id]) for sel_lmk_idx in sel_lmk_idx_list]
-                
 
-                for ii, Q, Rt in zip(index_list, expr_Q_list,expr_Rt_list):
-                    Q_list[ii] = Q
-                    Rt_list[ii] = Rt
+                # nuetral, ids, exprs
+                sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
                 
-                exp_weight = coordinate_descent(neutral, ids, expr, sel_lmk_idx_list ,lmk_2ds, expr_Rt_list, expr_Q_list)
-                for local_i, ii, Q, Rt, mesh_lmk_mapping_idx in enumerate(zip(self, index_list, Q_list, Rt_list, sel_lmk_idx_list)):
-                    h,w, _ = sel_imgs[local_i].shape
-                    new_Q = self.find_fit_projection_mat(single_energy_term, neutral, ids, expr, mesh_lmk_mapping_idx, id_weight, exp_weight, Q, Rt, self.convert_focal_length(h,w, 50))
-                    Q_list[ii] = new_Q 
-                expr_weights[key_id] = exp_weight
-            #===========================================================================================
-                # expr_weights.append(exp_weight)
-                for index in index_list:
-                    # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
-                    time_t = draw_cv(index,key_id, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
-                    path_name = osp.join("testdir", str(index))
+                
+                raw_Q_Rt_list = [find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
+
+                expr_Q_list = [ Q for Q, _ in raw_Q_Rt_list]
+                expr_Rt_list = [ Rt for _, Rt in raw_Q_Rt_list ] 
+                
+                def exp_cost_builder(Q, neutral, ids, exps):
+                    def wrapper(x,y):
+                        w = x[:6, 0]
+                        weight_norm = w.T@w
+                        id_weight = x[6:6+len(ids), :]
+                        expr_weight = x[6+len(ids):, :]
+                        return default_cost_function(Q, Rt, neutral, ids, exps, id_weight, expr_weight, y ) + weight_norm + (np.sum(w) - 1)**2
+
+                        return expr_cost_function(Q, neutral, ids, exps, id_weight, x,y) + weight_norm + (np.sum(w) - 1)**2
+                    return wrapper
+
+                for image_i,( Q, (neutral_, ids_, exprs_), Rt) in enumerate(zip(expr_Q_list, sel_faces, expr_Rt_list)) : 
+                    init_weight = np.ones((len(exprs_) + len(ids_)+ 6,1), dtype=np.float64)*0.5
+                    r_x, r_y, r_z = decompose_Rt(Rt)
+                    tx, ty, tz = Rt[:, -1]
+                    init_weight[:6, :] = np.array([r_x, r_y, r_z, tx, ty, tz]).reshape(-1,1)
+                    # opt_result = coordinate_descent(exp_cost_builder(Q, neutral_, ids_, exprs_), init_weight, lmk_2ds, 10)
+
+                    # cam_weight = opt_result[:6, 0]
+                    # exp_weight = opt_result[len(ids_)+6:, :]
+                    # id_weight = opt_result[6:len(ids_)+6, :]
+                    # expr_weights[index_list[image_i]] = exp_weight
+                    
+                    # Rt_list[ index_list[image_i] ] = get_Rt(*cam_weight.ravel())
+                    Rt_list[ index_list[image_i] ] =Rt
+                    Q_list[ index_list[image_i] ] = expr_Q_list[image_i]
+
+                    path_name = osp.join("cd_test", str(key_id))
                     if not os.path.exists(path_name):
                         os.makedirs(path_name)
-                    vv = get_combine_model(id_weight, exp_weight)
-                    igl.write_triangle_mesh(os.path.join(path_name, "opt1_iter_num_" +str(i)+ ".obj"), vv, self.neutral_mesh_f)
+                    # vv = get_combine_model(id_weight, exp_weight)
+                    vv = get_combine_model(id_weight, np.zeros_like(expr_weights[0]))
+                    igl.write_triangle_mesh(os.path.join(path_name, "exp_Rt_opt_" +str(image_i)+ ".obj"), vv, self.neutral_mesh_f)
+                    cv2.imwrite(osp.join(path_name, "exp_Rt_opt_" +str(image_i)+ ".png"), sel_imgs[image_i])
+                    cv2.waitKey(0)
+
+                # expr_weights[key_id] = exp_weight
+            # #===========================================================================================
+            #     # expr_weights.append(exp_weight)
+                for index in index_list:
+                    # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
+                    time_t = draw_cv(index,key_id, time_t, id_weight, expr_weights, Q_list, Rt_list)
+                    # path_name = osp.join("testdir", str(index))
+                    # if not os.path.exists(path_name):
+                        # os.makedirs(path_name)
+                    # vv = get_combine_model(id_weight, exp_weight)
+                    # igl.write_triangle_mesh(os.path.join(path_name, "opt1_iter_num_" +str(i)+ ".obj"), vv, self.neutral_mesh_f)
             
 
             # phase 2
-            # calculate exact id_weights and contour(optional)
-            # res_id_weight = id_weight_fit(self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
-            res_id_weight = id_weight_fit(neutral, ids, expr,lmk_idx_list ,self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)
+            def id_cost_funciton_builder(Q_list, Rt_list, v_idx_sel_index_list, expr_weight_list, lmk_2d_list):
+                
+                assert(Q_list != Rt_list, "Q_list, Rt_list is not same")
+                prp_vert = [] 
+                for v_idx_sel_index in v_idx_sel_index_list:
+                    new_v = get_bars(neutral, ids, expr, v_idx_sel_index)
+                    prp_vert.append(new_v)
+                def wrapper(x,y):# we do not use y in here.
+                    cost_z = 0
+                    for Q, Rt, (neutral_b, ids_b, expr_b), expr_w, lmk_2d in zip(Q_list, Rt_list, prp_vert, expr_weight_list, lmk_2d_list):
+                        cost_z += default_cost_function(Q, Rt, neutral_b, ids_b, expr_b, x, expr_w, lmk_2d) 
+                    return cost_z
+                return wrapper
+
+            # res_id_weight = coordinate_descent(id_cost_funciton_builder(Q_list, Rt_list, lmk_idx_list, expr_weights, lmk_2d_list), id_weight, None, 10)
+            # id_weight  = res_id_weight
 
     def extract_train_set_blendshapes(train_set_images_lmks, neutral_pose, blendshapes):
         """
