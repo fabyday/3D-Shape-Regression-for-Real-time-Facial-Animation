@@ -12,6 +12,7 @@ import camera_clib as clib
 import data_loader as dl
 import open3d as o3d
 import open3d.visualization.rendering as rendering
+import visualizer as vis 
 
 import scipy 
 
@@ -147,6 +148,12 @@ class PreProp:
         self.meshes.append(mesh_collect)
         self.expr_meshes = mesh_collect
 
+
+
+        print("neutral boundary calc start.")
+        self.mesh_boundary_index = vis.find_boundary_pts(self.neutral_mesh_f)
+        print("neutral boundary calc was done.")
+
             
 
 
@@ -268,7 +275,13 @@ class PreProp:
         expr -= np.expand_dims(neutral, axis=0)
         # expr_bar = expr[..., lmk_idx, :]
         expr_num, _,_ = expr.shape
+
+
         
+        inner_face_lmk_idx = self.mouse, self.eyebrow, self.nose, self.eye
+        inner_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
+            self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']+\
+            self.eye['left_eye']['full_index'] + self.eye['right_eye']['full_index']
         # lmks_2d = np.array(lmks_2d)
 
         # def get_combine_bar_model( w_i, w_e):
@@ -303,90 +316,6 @@ class PreProp:
             expr_bar = exprs[:, sel_lmk_idx, :]
             return neutral_bar, ids_bar, expr_bar
                     
-        
-        import copy 
-        def draw_circle(v, img, colors = (1.0,0.0,0.0)):
-            for vv in v:
-                cv2.circle(img, center=vv.astype(int), radius=10, color=colors, thickness=2)
-
-        def resize(img, width):
-            h,w,c = img.shape
-            ratio = width / w 
-            new_h = h*ratio 
-            img = cv2.resize(img, [int(new_h), int(width)])
-            return img
-        
-
-        def find_contour(lmk2d, proj_3d_v):
-            hull = sp.ConvexHull(proj_3d_v)
-            convex_index = hull.vertices
-            kd = sp.cKDTree(proj_3d_v[convex_index, :])
-            d, idx = kd.query(lmk2d)
-            return convex_index[idx]
-
-        
-        def draw_cv(index, expr_index, flag, id_weight, expr_weights, Q_list, Rt_list):
-            img = self.img_list[index]['img_data']
-            truth = copy.deepcopy(img)
-            test = copy.deepcopy(img)
-            sel_lmk = np.array(self.img_list[index]['lmk_data'])
-            exp_weight = expr_weights[expr_index]
-            
-            sel_index_list = lmk_idx_list[index]
-            verts_3d = get_combine_bar_model(neutral[sel_index_list, :], ids[:,sel_index_list,:], expr[:,sel_index_list,:], id_weight, exp_weight)
-            out_of_concern_idx = [i for i in range(len(neutral)) if i not in sel_index_list]
-            non_sel_mesh_v = get_combine_model(id_weight, exp_weight)
-            non_sel_mesh_v = non_sel_mesh_v[out_of_concern_idx]
-            # draw_circle(transform_lm3d(verts_3d, 1, np.eye(3,3), np.zeros((3,1))), test, (255,0,0))
-            non_sel_mesh_v = non_sel_mesh_v[::int(len(non_sel_mesh_v)//100),:]
-            draw_circle(add_Rt_to_pts(Q_list[index], Rt_list[index], verts_3d), test, (0,0,255))
-            draw_circle(sel_lmk, truth, (255,0,0))
-            truth = resize(truth, 800)
-            test = resize(test, 800)
-            show_img = np.concatenate([truth, test], 1)
-            cv2.imshow("test", show_img)
-            
-            path_name = osp.join("testdir", str(index))
-            if not os.path.exists(path_name):
-                os.makedirs(path_name)
-            vv = get_combine_model(id_weight, exp_weight)
-            igl.write_triangle_mesh(os.path.join(path_name, "test" + ".obj"), vv, self.neutral_mesh_f)
-            if not flag:
-                key = cv2.waitKey(0)
-            else:
-                key = cv2.waitKey(100)
-
-            if key == ord('q'):
-                return False
-            elif key == ord('a'):
-                return True
-            else :
-                return True
-        
-
-
-        def draw_contour(img, lmk, new_contour, orig, flag):
-            draw_circle(lmk,img, colors=(255,0,0))
-            draw_circle(new_contour,img, colors=(0,0,255))
-            draw_circle(orig, img, colors=(0,255,255))
-            for i in range(len(new_contour) -1):
-                cv2.line(img, new_contour[i].astype(int), new_contour[i+1].astype(int), color=(0,255,0), thickness=3)
-
-            for i in range(len(orig) -1):
-                cv2.line(img, orig[i].astype(int), orig[i+1].astype(int), color=(255,255,0), thickness=3)
-            img= resize(img, 1500)
-            cv2.imshow("contour", img)
-            if not flag:
-                key = cv2.waitKey(0)
-            else:
-                key = cv2.waitKey(100)
-
-            if key == ord('q'):
-                return False
-            elif key == ord('a'):
-                return True
-            else :
-                return True
         
         
                 
@@ -623,18 +552,23 @@ class PreProp:
         
         for i in tqdm.tqdm(range(iter_num)):
             
-            for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())):
+            for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())): 
                 sel_imgs = [info['img_data'] for info in item ]
                 lmk_2ds = np.array([info['lmk_data'] for info in item ])
                 index_list =  [ info['index'] for info in item ]
                 sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
 
                 # nuetral, ids, exprs
-                sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
                 
-                
-                raw_Q_Rt_list = [find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
-
+                if i == 0 : # if first iteration, we only compute with inner lmk.
+                    inner_sel_lmk_idx_list = [[lmk_idx_list[idx] for idx in inner_face_lmk_idx] for lmk_idx_list in sel_lmk_idx_list]
+                    sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in inner_sel_lmk_idx_list]
+                    raw_Q_Rt_list = [find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d[inner_face_lmk_idx], None) \
+                                     for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
+                else:
+                    sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
+                    raw_Q_Rt_list = [ find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) \
+                                     for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
                 expr_Q_list = [ Q for Q, _ in raw_Q_Rt_list]
                 expr_Rt_list = [ Rt for _, Rt in raw_Q_Rt_list ] 
                 
@@ -672,19 +606,30 @@ class PreProp:
                     vv = get_combine_model(id_weight, np.zeros_like(expr_weights[0]))
                     igl.write_triangle_mesh(os.path.join(path_name, "exp_Rt_opt_" +str(image_i)+ ".obj"), vv, self.neutral_mesh_f)
                     cv2.imwrite(osp.join(path_name, "exp_Rt_opt_" +str(image_i)+ ".png"), sel_imgs[image_i])
-                    cv2.waitKey(0)
 
                 # expr_weights[key_id] = exp_weight
             # #===========================================================================================
             #     # expr_weights.append(exp_weight)
+                time_t = False
+
+                #draw contour
+                wait_delay = 0
                 for index in index_list:
+                    img = self.img_list[index]['img_data']
+                    vv = get_combine_model(id_weight, np.zeros_like(expr_weights[0]))
+                    pts2d = add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
                     # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
-                    time_t = draw_cv(index,key_id, time_t, id_weight, expr_weights, Q_list, Rt_list)
-                    # path_name = osp.join("testdir", str(index))
-                    # if not os.path.exists(path_name):
-                        # os.makedirs(path_name)
-                    # vv = get_combine_model(id_weight, exp_weight)
-                    # igl.write_triangle_mesh(os.path.join(path_name, "opt1_iter_num_" +str(i)+ ".obj"), vv, self.neutral_mesh_f)
+                    # gt_pts_img = vis.draw_pts(img, "", color=(0,0,255))
+                    # pred_pts_img = vis.draw_pts(img, "", color=(0,0,255))
+                    mesh_contour_img = vis.draw_contour(img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000)
+                    # concat_img = vis.concatenate_img(gt_pts_img, pred_pts_img, mesh_contour_img)
+                    concat_img = vis.concatenate_img(mesh_contour_img)
+                    cv2.imshow("show me ", concat_img)
+                    key = cv2.waitKey(wait_delay)
+                    if key == ord('q'):
+                        continue
+                    elif key == ord('w'):
+                        wait_delay = 1000
             
 
             # phase 2
