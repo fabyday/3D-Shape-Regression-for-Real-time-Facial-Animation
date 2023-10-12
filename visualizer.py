@@ -4,25 +4,167 @@ import copy
 
 
 
-class HalfEdge:
+class EdgeFace:
     def __init__(self, face_index_list = None):
-        v_e_list = dict() 
-        edge_idx = []
-        face_index = face_index_list
+        self.edge_face = {}
+        self.vert_edge = []
+        self.vert_face = []
+        self.edge = []
+        self.face_index = face_index_list
+        self.face_edge = []
 
+        self.is_built = False
+    def minmax(self, a,b):
+        return (min(a,b), max(a,b))
     
-    def build(face_index_list = None ):
+    def build(self, face_index_list = None ):
         if face_index_list != None :
-            face_index = face_index_list
+            self.face_index = face_index_list
 
+        max_idx = -1
+        for faces in self.face_index:
+            for f in faces:
+                if max_idx < f:
+                    max_idx = f
+        
+        self.vert_edge = [ set() for _ in range(max_idx + 1) ]
+        self.vert_face = [set() for _ in range(max_idx + 1)]
 
-        
-        
-        if face_index == None :
+        if self.face_index is None :
             raise ValueError("face index is None")
+        self.face_edge = [[] for _ in range(len(self.face_index))]        
+        for fi, (v1,v2,v3 ) in enumerate(self.face_index):
+            edge1 = self.minmax(v1,v2)
+            edge2 = self.minmax(v2,v3)
+            edge3 = self.minmax(v3,v1)
+            
+            edge1_idx = len(self.edge)
+            self.edge.append(edge1)
+            edge2_idx = len(self.edge)
+            self.edge.append(edge2)
+            edge3_idx = len(self.edge)
+            self.edge.append(edge3)
+
+            self.vert_edge[v1].add(edge1_idx);self.vert_edge[v1].add(edge3_idx)
+            self.vert_edge[v2].add(edge1_idx);self.vert_edge[v2].add(edge2_idx)
+            self.vert_edge[v3].add(edge2_idx);self.vert_edge[v3].add(edge3_idx)
+            self.vert_face[v1].add(fi)
+            self.vert_face[v2].add(fi)
+            self.vert_face[v2].add(fi)
+
+            self.face_edge[fi].append(edge1_idx)
+            self.face_edge[fi].append(edge2_idx)
+            self.face_edge[fi].append(edge3_idx)
+            
+            for edge_pair in [edge1, edge2, edge3]:
+                if self.edge_face.get(edge_pair, None) is None :
+                    self.edge_face[edge_pair] = []
+            self.edge_face[edge1].append(fi)
+            self.edge_face[edge2].append(fi)
+            self.edge_face[edge3].append(fi)
         
-    def is_boundrary():
-        pass 
+
+
+        test_list = []
+        for k in self.edge_face:
+            if len(self.edge_face[k]) < 2 : 
+                test_list += self.edge_face[k]
+        print("")
+        # boundary may not be only one.
+        ####################################################
+        
+        #find candidate boundary face and edge
+        candidate_face_index_list = []
+        candidate_edge_index_list = []
+        test2 = []
+        for f_idx in range(len(self.face_index)):
+            if self.is_boundrary(f_idx):
+                test2.append(f_idx)
+                candidate_face_index_list.append(f_idx)
+                candidate_edge_index_list.append(self.get_boundary_edge(f_idx))
+        print(set(test2) - set(test_list))
+        # linked boundary index.
+        self.boundary_v_index_list = []
+        
+
+
+        # find looooooooooooooooooooooooooop
+        self.boundary_v_idx_list = []
+        self.boundary_edge_idx_list = []
+        consumed_edge_set = set()
+        for e_idx in candidate_edge_index_list:
+
+            if e_idx in  consumed_edge_set : 
+                print("this was already used.")
+                continue 
+
+            boundary_edge_idx_list = []
+            boundary_v_idx = []
+            next_edge_idx = e_idx
+            while True:
+                edge = self.edge[next_edge_idx]
+                if len(boundary_edge_idx_list) != 0:
+                    if next_edge_idx == e_idx: # we finally find loop of this edges.
+                        break
+                    prev_edge = self.edge[ boundary_edge_idx_list[-1] ] 
+                    v2 = list(set(edge) - set(prev_edge))[0]
+                    boundary_edge_idx_list.append(next_edge_idx)
+                else: # when start to find edges.
+                    boundary_edge_idx_list.append(next_edge_idx)
+                    boundary_v_idx.append(edge[0])
+                    v2 = edge[1]
+
+                boundary_v_idx.append(v2)
+                edges = list(self.vert_edge[v2])
+                boundary_edge_checker = [self.is_boundrary_edge(edge_idx) for edge_idx in edges]
+
+                prev_idx = next_edge_idx
+                next_edge_idx = None
+                for i, is_boundary in enumerate(boundary_edge_checker): 
+                    if is_boundary and prev_idx != edges[i]:
+                        next_edge_idx = edges[i]
+                
+                if next_edge_idx == None :
+                    raise ValueError("boundary edge was not connected to this edge.")
+            self.boundary_v_idx_list.append(boundary_v_idx)
+            consumed_edge_set = consumed_edge_set.union(boundary_edge_idx_list)
+            self.boundary_edge_idx_list.append(boundary_edge_idx_list)
+        
+        
+        self.is_built = True
+
+
+    def get_boundary_v_list(self):
+        if not self.is_built : 
+            raise RuntimeError("this was not built")
+        return self.boundary_v_idx_list
+
+    def get_boundary_edge(self, face_index):
+        edge_indices = self.face_edge[face_index]
+        for ed_idx in edge_indices:
+            edge_vv_key = self.edge[ed_idx]
+            if len(self.edge_face[edge_vv_key]) < 2:
+                return ed_idx
+        
+    def is_boundrary(self,face_index):
+        edge_indices = self.face_edge[face_index]
+        boundary_bool = False
+        for ed_idx in edge_indices:
+            edge_vv_key = self.edge[ed_idx]
+            if len(self.edge_face[edge_vv_key]) < 2:
+                boundary_bool = True
+                break
+
+        return boundary_bool
+    
+
+    def is_boundrary_edge(self, edge_idx):
+        boundary_bool = False
+        edge_vv_key = self.edge[edge_idx]
+        if len(self.edge_face[edge_vv_key]) < 2:
+            boundary_bool = True
+
+        return boundary_bool
 
     def vv(v):
         pass 
@@ -31,107 +173,57 @@ class HalfEdge:
         pass
 
 
-def get_half_edge(index_list):
-    v = dict()
-    max_idx = 0
-    #find max index
-    for faces in index_list:
-        for f in faces:
-            if max_idx < f:
-                max_idx = f
-    
-
-    for i in range(max_idx+1):
-        v[i] = set()
-    
-
 
 
 def resize(img, width):
-    h,w,c = img.shape
+    w, h, c = img.shape
+    if w == width:
+        return img
     ratio = width / w 
     new_h = h*ratio 
     img = cv2.resize(img, [int(new_h), int(width)])
     return img
 
 
-def find_boundary_pts(idx_list): # this is not water tight
-    res = dict()
-    max_idx = 0
-    #find max index
-    for faces in idx_list:
-        for f in faces:
-            if max_idx < f:
-                max_idx = f
-    
 
-    for i in range(max_idx+1):
-        res[i] = set()
-    
-
-    for f1, f2, f3 in idx_list:
-        res[f1].add((f1,f3)); res[f1].add((f1,f2))
-        res[f2].add((f2,f3)); res[f2].add((f2,f1))
-        res[f3].add((f3,f1)); res[f3].add((f3,f2))
-    
-    #find boundrary
-    boundary_idx = []
-    for key in res.keys():
-        if len(res[key])  < 2:
-            boundary_idx.append(key)
-    
-    if len(boundary_idx) == 0 :
-        return boundary_idx
-    
-    #find connection.
-    started_b_idx = boundary_idx[0]
-    cur_b_idx = started_b_idx
-    sorted_boundary_idx = [cur_b_idx]
-    while True:
-        for tmp_b_idx in res[cur_b_idx]:
-            if tmp_b_idx in boundary_idx:
-                sorted_boundary_idx.append(tmp_b_idx)
-                cur_b_idx = tmp_b_idx
-        
-        if cur_b_idx == started_b_idx:
-            break 
-    return sorted_boundary_idx
-
-def draw_circle(v, img, colors = (1.0,0.0,0.0)):
+def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10):
     for vv in v:
-        cv2.circle(img, center=vv.astype(int), radius=10, color=colors, thickness=2)
+        cv2.circle(img, center=vv.astype(int), radius=radius, color=colors, thickness=2)
 
 
-def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0), width = None ):
+def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0), width = None, caption = "" ):
     cp_img = copy.deepcopy(img)
-
-    draw_circle(lmk,cp_img, colors=color)
+    
+    contour = new_contour
+    sel_lmk = lmk[contour, :].astype(int)
+    
+    draw_circle(sel_lmk,cp_img, colors=color)
     for i in range(len(new_contour) -1):
-        cv2.line(cp_img, new_contour[i].astype(int), new_contour[i+1].astype(int), color=line_color, thickness=3)
+        cv2.line(cp_img, sel_lmk[i], sel_lmk[i+1], color=line_color, thickness=3)
     
     if width == None :
         resized_img = cp_img
     else:
         resized_img = resize(cp_img, width)
-
-
     return resized_img
 
+def concatenate_img(row, col,*imgs):
+    if len(imgs) != row*col:
+        raise ValueError("row and col is not same size as imgs")
+    cols = []
+    for j in range(len(imgs)//col):
+        cols.append(np.concatenate(imgs[col*j:col*(j+1)],1))
 
-    for i in range(len(orig) -1):
-        cv2.line(img, orig[i].astype(int), orig[i+1].astype(int), color=(255,255,0), thickness=3)
-    img= resize(img, 1500)
-
-def concatenate_img(*imgs):
-    show_img = np.concatenate(imgs, 1)
+        
+    show_img = np.concatenate(cols, 0)
     return show_img
 
 
-def draw_pts(img, pts_2d, color = (0,0,255), width = None):
+def draw_pts(img, pts_2d, color = (0,0,255), width = None, radius = 10, caption=""):
     
     cp_img = copy.deepcopy(img)
     
-    draw_circle(pts_2d, cp_img, color)
+    draw_circle(pts_2d, cp_img, color, radius)
     if width == None :
         resized_img = cp_img
     else:

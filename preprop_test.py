@@ -806,7 +806,7 @@ class PreProp:
                     vv = get_combine_model(id_weight, exp_weight)
                     igl.write_triangle_mesh(os.path.join(path_name, "opt1_iter_num_" +str(i)+ ".obj"), vv, self.neutral_mesh_f)
             
-
+        
             # phase 2
             # calculate exact id_weights and contour(optional)
             # res_id_weight = id_weight_fit(self.img_list, cam_scales, cam_rots, cam_tvecs, expr_weights)

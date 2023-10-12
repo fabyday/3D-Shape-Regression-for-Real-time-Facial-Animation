@@ -13,7 +13,7 @@ import data_loader as dl
 import open3d as o3d
 import open3d.visualization.rendering as rendering
 import visualizer as vis 
-
+from collections import Counter
 import scipy 
 
 import scipy.optimize as opt
@@ -151,7 +151,17 @@ class PreProp:
 
 
         print("neutral boundary calc start.")
-        self.mesh_boundary_index = vis.find_boundary_pts(self.neutral_mesh_f)
+        halfedge = vis.EdgeFace(self.neutral_mesh_f)
+        halfedge.build()
+        boundary_list = halfedge.get_boundary_v_list()
+        boundary_list_size = [len(bb) for bb in boundary_list]
+        max_idx = 0
+        val = 0
+        for i, bb in enumerate(boundary_list_size):
+            if val < bb:
+                val = bb
+                max_idx = i
+        self.mesh_boundary_index = boundary_list[max_idx]
         print("neutral boundary calc was done.")
 
             
@@ -540,7 +550,18 @@ class PreProp:
                         x[i] %= np.pi*2
                 print("iter : ", iter_i, "i-th of w : ", i,"cost : ", f_val, "\nx", x.ravel(), "alpha : ", alpha, "")
                 return x
+        
+        
+        
+        
+        def find_contour(lmk2d, proj_3d_v):
+            hull = sp.ConvexHull(proj_3d_v)
+            convex_index = hull.vertices
+            kd = sp.cKDTree(proj_3d_v[convex_index, :])
+            d, idx = kd.query(lmk2d)
+            return convex_index[idx]
 
+        
         iter_num = 10
         # expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_and_info.keys()))]
         expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_list))]
@@ -619,11 +640,17 @@ class PreProp:
                     vv = get_combine_model(id_weight, np.zeros_like(expr_weights[0]))
                     pts2d = add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
                     # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
-                    # gt_pts_img = vis.draw_pts(img, "", color=(0,0,255))
-                    # pred_pts_img = vis.draw_pts(img, "", color=(0,0,255))
-                    mesh_contour_img = vis.draw_contour(img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000)
-                    # concat_img = vis.concatenate_img(gt_pts_img, pred_pts_img, mesh_contour_img)
-                    concat_img = vis.concatenate_img(mesh_contour_img)
+                    contour = find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
+                    new_contour =  pts2d[contour]
+
+                    gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark")
+                    pred_lmk_img = vis.draw_pts(img, pts2d[lmk_idx_list[index]], color=(0,0,255), width=1000, caption = "Fitting Landmark")
+                    pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 1, caption = "Fitting Landmark")
+                    # new_cont_img = vis.draw_pts(img, new_contour, color=(0,0,255))
+                    new_cont_img = vis.draw_contour(img, pts2d, contour, color=(0,0,255), line_color=(0,255,0), caption=" ")
+                    gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], color=(0,255,255))
+                    mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
+                    concat_img = vis.concatenate_img(1,2, pred_pts_img, mesh_contour_img)
                     cv2.imshow("show me ", concat_img)
                     key = cv2.waitKey(wait_delay)
                     if key == ord('q'):
