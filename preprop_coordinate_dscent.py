@@ -651,12 +651,9 @@ class PreProp:
                     gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], color=(0,255,255))
                     mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
                     concat_img = vis.concatenate_img(1,2, pred_pts_img, mesh_contour_img)
-                    cv2.imshow("show me ", concat_img)
-                    key = cv2.waitKey(wait_delay)
-                    if key == ord('q'):
-                        continue
-                    elif key == ord('w'):
-                        wait_delay = 1000
+                    vis.set_delay(0)
+                    vis.show("test", concat_img )
+                
             
 
             # phase 2

@@ -175,6 +175,28 @@ class EdgeFace:
 
 
 
+class CvKey:
+
+
+    def __init__(self):
+
+        self.delay = 0
+
+    def load_config(self, file_name):
+        pass 
+
+
+    def set_delay(self, delay):
+        self.delay = delay
+
+
+
+
+
+g_key_manager = CvKey()
+
+
+
 def resize(img, width):
     w, h, c = img.shape
     if w == width:
@@ -184,6 +206,15 @@ def resize(img, width):
     img = cv2.resize(img, [int(new_h), int(width)])
     return img
 
+
+def put_text(img, caption, color, base_loc, font_face, font_scale, thickness, linetype, fit_bool = False):
+    t_size = cv2.getTextSize(caption, 2, fontScale=font_scale, thickness=thickness+2)
+    base_loc_x, base_loc_y = base_loc
+    wid = t_size[0][0]
+    hei = t_size[0][1]
+    cv2.putText(img, caption, (base_loc_x , base_loc_y+hei+2), font_face, font_scale, (255, 255,255), thickness+3, cv2.LINE_AA) # white outline
+    cv2.putText(img, caption, (base_loc_x , base_loc_y+hei+2), font_face, font_scale, (0,0,0), thickness+1, cv2.LINE_AA) # black outline
+    cv2.putText(img, caption, (base_loc_x , base_loc_y+hei+2), font_face, font_scale, color, thickness, cv2.LINE_AA)
 
 
 def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10):
@@ -205,6 +236,9 @@ def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0)
         resized_img = cp_img
     else:
         resized_img = resize(cp_img, width)
+    caption_size = len(caption)
+    put_text(resized_img, caption, color, base_loc=(0,0), \
+             font_face = 1, font_scale=2, thickness=1, linetype=cv2.LINE_AA, fit_bool=False )
     return resized_img
 
 def concatenate_img(row, col,*imgs):
@@ -229,3 +263,21 @@ def draw_pts(img, pts_2d, color = (0,0,255), width = None, radius = 10, caption=
     else:
         resized_img = resize(cp_img, width)
     return resized_img
+
+
+def set_delay(delay):
+    g_key_manager.set_delay(delay)
+
+def show(title, img):
+    cv2.imshow(title, img)
+    key = cv2.waitKey(g_key_manager.delay)
+    if key == ord('a'):
+        return
+    elif key == ord('w'):
+        return
+    elif key == ord('d'):
+        return
+    elif key == ord('s'):
+        return 
+    elif key == ord('q'):
+        exit(0)
