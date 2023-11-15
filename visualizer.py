@@ -101,7 +101,7 @@ class EdgeFace:
         for e_idx in candidate_edge_index_list:
 
             if e_idx in  consumed_edge_set : 
-                print("this was already used.")
+                # print("this was already used.")
                 continue 
 
             boundary_edge_idx_list = []
@@ -417,15 +417,15 @@ class MeshWriter:
             uniform mat4 Q;
             uniform mat4 Rt;
 
-            out vec3 FragPos;
             out vec3 Normal;
+            out vec3 FragPos;
 
             void main()
             {
-                vec4 res = Q*Rt*vec4(aPos, 1.0);
-                
-                gl_Position = res;
-                FragPos = vec3( Rt * vec4(aPos,1.0));
+                gl_Position = Q*Rt*vec4(aPos, 1.0);
+                //FragPos = vec3(Rt*vec4(aPos,1.0));
+                //Normal = mat3(transpose(inverse(Rt)))*anormal;
+                FragPos =aPos;
                 Normal = anormal;
             }
             """
@@ -433,13 +433,12 @@ class MeshWriter:
         p_shader_src ="""
             #version 330 core
             out vec4 FragColor;
+
             uniform vec3 lightColor;
             uniform vec3 objectColor;
-
             uniform vec3 lightPos;
 
             in vec3 Normal;
-
             in vec3 FragPos;
 
 
@@ -449,10 +448,11 @@ class MeshWriter:
                 vec3 ambient = ambientStrength * (lightColor);
                 vec3 norm = normalize(Normal);
                 vec3 lightDir = normalize(lightPos - FragPos);
+                
                 float diff = max(dot(norm, lightDir), 0.0);
                 vec3 diffuse = diff*lightColor;
                 vec3 result = (ambient + diffuse)*objectColor;
-                FragColor = vec4(result, 1.0);
+                FragColor = vec4(result, 0.0);
             }
             """
 
@@ -576,32 +576,35 @@ class MeshWriter:
         self.set_render_img_size(w, h)
 
         flat_vnv = np.concatenate([v, v_normal], axis=-1).reshape(-1).astype(np.float32)
-        flat_f = f.reshape(-1).astype(np.uint32)
-        
-        glBufferData(GL_ARRAY_BUFFER, flat_vnv.itemsize*flat_f.size, flat_vnv.ctypes.data_as(ctypes.c_void_p), GL_STATIC_DRAW)
+        flat_tmp = np.zeros_like(flat_vnv, dtype=np.float32)
+        flat_tmp[...] = flat_vnv 
+        flat_vnv = flat_tmp
+        flat_f = np.zeros((f.size), dtype=np.uint32)
+        flat_f[...] = f.reshape(-1).astype(np.uint32)
+        glBufferData(GL_ARRAY_BUFFER, flat_vnv.itemsize*flat_vnv.size, flat_vnv.ctypes.data_as(ctypes.c_void_p), GL_STATIC_DRAW)
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, flat_f.itemsize*flat_f.size, flat_f.ctypes.data_as(ctypes.c_void_p), GL_STATIC_DRAW)
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, flat_vnv.itemsize*6, ctypes.c_void_p(0))
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, flat_vnv.itemsize*6, ctypes.c_void_p(3))
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, flat_vnv.itemsize*6, ctypes.c_void_p( 3 * ctypes.sizeof(ctypes.c_float) ) )
+        glEnableVertexAttribArray(0)
+        glEnableVertexAttribArray(1)
+        # glPolygonMode( GL_FRONT_AND_BACK, GL_LINE )
+        glFrontFace(GL_CW)
+        glPolygonMode( GL_FRONT, GL_FILL )
+        # glPolygonMode( GL_BACK, GL_EMP )
+        # glDisable(GL_CULL_FACE)
+        glCullFace(GL_BACK)
+        glEnable(GL_CULL_FACE)
 
-
+        
         glViewport(0,0, self.width, self.height)
+        glUseProgram(self.gl_program)
         glEnable(GL_DEPTH_TEST);  
+        glDepthFunc(GL_LESS)
+        # glCullFace()
         glClearColor(0.0, 0.0, 0.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
 
-        glUseProgram(self.gl_program)
-        glEnableVertexAttribArray(0)
-        glEnableVertexAttribArray(1)
-        obj_color_loc = glGetUniformLocation(self.gl_program, 'objectColor')
-
-        glUniform3f(obj_color_loc, *color.ravel())
-        znear = 0.1
-        zfar = 1000
         new_Rt = np.identity(4, dtype=np.float32)
-        Rx = np.zeros((3,3))
-        # Rx[1,-1] = -1
-        # Rx[2,1] = 1
-        
         # https://amytabb.com/tips/tutorials/2019/06/28/OpenCV-to-OpenGL-tutorial-essentials/
         new_Rt[:3,:3] = Rt[:3,:3]
         new_Rt[:-1, -1] = Rt[:, -1]
@@ -617,72 +620,180 @@ class MeshWriter:
         # new_NDC[1,1] = 2/self.height; new_NDC[1,-1] = -1
         # new_NDC[2,2] = -2/(far-near); new_NDC[2,-1] = -(far+near)/(far-near)
         # new_NDC[3,-1] = 1
-        def gen_proj(Q, left, right, top, bottom, near, far):
-            near = -near 
-            far = -far 
+        def gen_proj(Q, left, right, bottom, top, near, far):
+            near = near 
+            far = far 
             Q = np.copy(Q)
             Q /= Q[-1,-1] # remove alpha
             # see https://sightations.wordpress.com/2010/08/03/simulating-calibrated-cameras-in-opengl/
             #see http://ksimek.github.io/2013/06/03/calibrated_cameras_in_opengl/
             #see http://jamesgregson.blogspot.com/2011/11/matching-calibrated-cameras-with-opengl.html
+            near = near 
+            far = far 
+            Q = np.copy(Q)
+            Q /= Q[-1,-1] # remove alpha
+
+            alpha = Q[0,0]
+            beta = Q[1,1]
+            skew = Q[0,1]
+            u0 = Q[0,2]
+            v0 = Q[1,2]
+            
+            proj = np.zeros((4,4), dtype=np.float32)
             ndc = np.zeros((4,4), dtype=np.float32)
-            proj = np.zeros((4,4),dtype=np.float32)
-            z_invert = np.identity(4, dtype=np.float32)
-            # z_invert[2,2] = -1
-            extended_Q = np.zeros((3,4), dtype = np.float32) 
-            extended_Q [:, :-1] = Q
-            extended_Q = extended_Q @ z_invert
-            # [fx  r  cx  0] 
-            # [ 0 fy  cy  0]
-            # [ 0  0      0]
-            # [       -1  0]
 
-            proj[:2, :] = extended_Q[:2, :]
-            proj[2,2] = 1 ; proj[2,3] = 0 
+            ndc[0,0] = 2.0/(right - left) ; ndc[0,2] = -(right + left)/(right-left)
+            ndc[1,1] = 2.0/(top - bottom) ; ndc[1,2] = -(top + bottom)/(top - bottom)
+            # ndc[2,2] = -(far+near)/(far - near) ; ndc[2,2] = -(far * near)/(far - near)
+            ndc[2,2] = (far+near)/(far - near) ; ndc[2,2] = (far * near)/(far - near)
+            ndc[3,2] = 1.0
+
+            proj[0,0] = alpha; proj[0,1] = skew ; proj[0,2] = u0 
+            proj[1,1] = beta ; proj[1,2] = v0 
+            proj[2,2] = 1; 
             proj[3,3] = 1.0
-
-            ndc[0,0] = 2.0/(right-left); ndc[0, 3] = -(right+left)/(right-left)
-            ndc[1,1] = 2.0/(top - bottom); ndc[1,3] = -(top + bottom)/(top - bottom)
-            ndc[2,2] = -(far+near)/(far-near); ndc[2, 3] = -(2*far*near)/(far - near)
-            ndc[3,2] = -1.0
             return ndc, proj
-        ndc, new_proj = gen_proj(Q, 0, self.width, self.height, 0,0.01, 1000.0)
+        # def gen_proj(Q, left, right, bottom, top, near, far):
+        #     near = near 
+        #     far = far 
+        #     Q = np.copy(Q)
+        #     Q /= Q[-1,-1] # remove alpha
+
+        #     alpha = Q[0,0]
+        #     beta = Q[1,1]
+        #     skew = Q[0,1]
+        #     u0 = Q[0,2]
+        #     v0 = Q[1,2]
+            
+        #     proj = np.zeros((4,4), dtype=np.float32)
+        #     ndc = np.zeros((4,4), dtype=np.float32)
+
+        #     ndc[0,0] = 2.0/(right - left) ; ndc[0,3] = -(right + left)/(right-left)
+        #     ndc[1,1] = 2.0/(top - bottom) ; ndc[1,3] = -(top + bottom)/(top - bottom)
+        #     ndc[2,2] = -2.0/(far - near) ; ndc[2,3] = -(far + near)/(far - near)
+        #     ndc[3,3] = 1.0
+
+        #     proj[0,0] = alpha; proj[0,1] = skew ; proj[0,2] = u0 
+        #     proj[1,1] = beta ; proj[1,2] = v0 
+        #     proj[2,2] = -(near+far); proj[2,3] = -near*far 
+        #     proj[3,2] = 1.0
+            
+            return ndc, proj
+        # ndc, new_proj = gen_proj(Q, 0, self.width, self.height, 0,0.01, 1000.0)
+        # ndc, new_proj = gen_proj(Q, 0, self.width, self.height, 0,0.01, 1000.0)
+        ndc, new_proj = gen_proj(Q, 0, self.width, 0, self.height,0.01, 1000.0)
         # ndc, new_proj = gen_proj(Q, -self.width/2, self.width/2, -self.height/2, self.height/2,0.01, 1000.0)
         # new_Q = new_NDC@new_Q
+        xxx = np.identity(4, dtype=np.float32)
+        xxx[2, 2] = -1
         # res3 = new_Rt@np.concatenate([v, np.ones((len(v),1))], axis=-1).T
         res11=new_Rt@np.concatenate([v, np.ones((len(v),1))], axis=-1).T
+        # res11 = xxx @ res111
         te2 = Q@res11[:3, :]
         te23 =te2[:-1, :] / te2[-1, :]
-        res32 =new_proj@res11
 
+        
+        res32 =new_proj@res11
+        # resr = res32 / res32[-2, :]
         res =ndc@res32
         res2 = res[:-1, :] / res[-1, :]
+        rollback = self.width*(res2[1, :] + 1 )/2
         ww= res[0,:]*self.width
         ss = res[1,:]*self.height
         res4= np.array([[1,0,0],[0,-1,self.height],[0,0,1]], dtype=np.float32)@res2
 
         # new_Q = self.convert_hz_intrinsic_to_opengl_projection(Q,0,0, self.width, self.height, znear, zfar, "y down" )
-        
+        # new_Rt = xxx@new_Rt
+        new_Rt = new_Rt
+        new_proj = ndc@new_proj
+        nn = new_proj@res11
+        nn2 = nn/nn[-1,:]
+   
+        rollback2 = self.width*(nn2[1, :] + 1 )/2
+        rollback3 = self.height*(nn2[2, :] + 1 )/2
+
+        # trans = glm.mat4(1)
+        # trans =glm.scale(trans, glm.vec3(0.1,0.1,0.1))
+        # trans = glm.translate(trans, glm.vec3(0,0,-3))
+        # camera = glm.lookAt(glm.vec3(0,0,5),glm.vec3(0,0,-1),glm.vec3(0,1,0))
+        # # print(camera)
+        # # camera = glm.translate(glm.vec3(0, 0, -10))
+        # new_proj = glm.perspective(np.pi*0.5, self.width/self.height, 0.1, 1000)
+        # new_Rt = glm.mul(camera, trans)
+
+
         Q_loc = glGetUniformLocation(self.gl_program, 'Q')
         Rt_loc = glGetUniformLocation(self.gl_program, 'Rt')
-        new_pr=np.zeros((4,4), dtype=np.float32)
-        new_pr[...] = new_proj
-        new_proj = new_pr
-        # glUniformMatrix4fv(Q_loc,1, GL_FALSE, glm.value_ptr(new_Q))
-        glUniformMatrix4fv(Q_loc,1, GL_FALSE, new_proj)
-        glUniformMatrix4fv(Rt_loc, 1, GL_FALSE, new_Rt)
-
         light_pos_loc = glGetUniformLocation(self.gl_program, 'lightPos')
-        glUniform3f(light_pos_loc, *self.light_pos)
         light_color_loc = glGetUniformLocation(self.gl_program, 'lightColor')
-        glUniform3f(light_color_loc, *self.bgr)
+        obj_color_loc = glGetUniformLocation(self.gl_program, 'objectColor')
+        
 
-        glDrawElements(GL_TRIANGLES, len(f)//3, GL_UNSIGNED_INT, ctypes.c_void_p(0))
+        # glUniformMatrix4fv(Q_loc,1, GL_FALSE, glm.value_ptr(new_proj))
+        # glUniformMatrix4fv(Rt_loc, 1, GL_FALSE, glm.value_ptr(new_Rt))
+
+        glUniformMatrix4fv(Q_loc,1, GL_TRUE, new_proj)
+        glUniformMatrix4fv(Rt_loc, 1, GL_TRUE, new_Rt)
+
+        
+        color = np.array([1.0, 0.0, 0.0], dtype=np.float32)
+        light = np.array([1.0, 1.0, 1.0], dtype=np.float32)
+        mean_v = np.mean(v, axis=0).reshape(-1,1)
+        lightPos = mean_v + np.array([[0],[0],[1000]], dtype=np.float32)
+        # lightPos = np.array([[0],[0],[1000]], dtype=np.float32)
+
+        # lightPos = np.array([0.0, 0.0, -0.0], dtype=np.float32)
+        # lightPos = -new_Rt[:-1, -1].reshape(-1,).astype(np.float32)
+        glUniform3f(obj_color_loc, *color.ravel())
+        glUniform3f(light_pos_loc, *lightPos.ravel())
+        glUniform3f(light_color_loc, *light.ravel())
+        
+        
+        # # v_normal /= np.linalg.norm(v_normal, axis=-1).reshape(-1,1)
+        # light_dir1 = lightPos.reshape(-1,3) - v.reshape(-1, 3)
+        # light_dir = light_dir1/np.linalg.norm(light_dir1, axis=-1).reshape(-1,1)
+        # diff1 = np.sum(light_dir*v_normal, -1)
+        # diff = np.clip(diff1, a_min=0, a_max=1)
+        # diffuse = diff.reshape(-1,1) * light
+        # diffuse = diffuse*color
+
+        # import matplotlib.pyplot as plt
+
+        # fig = plt.figure()
+        # ax = fig.add_subplot(projection='3d')
+        # ax.scatter([lightPos[0,0]],[lightPos[1,0]],[lightPos[2,0]], marker='^')
+        # xx = v[:, 0]
+        # yy = v[:, 1]
+        # zz = v[:, 2]
+        # ax.set_xlim(-30, 30)
+        # ax.set_ylim(-30, 30)
+        # ax.set_zlim(-30, 30)
+        # ax.set_xlabel('X Label')
+        # ax.set_ylabel('Y Label')
+        # ax.set_zlabel('Z Label')
+        # dx = v_normal[:,0]
+        # dy = v_normal[:,1]
+        # dz = v_normal[:,2]
+        # ax.scatter(xx, yy, zz, marker='o')
+        # ax.quiver(xx,yy,zz, dx, dy, dz,color='red')
+        # plt.show()
+
+        glDrawElements(GL_TRIANGLES, f.size, GL_UNSIGNED_INT, ctypes.c_void_p(0))
+        
+        
+        
         glUseProgram(0)
         res = self.read_color_buffer()
+        # res = data =cv2.flip(res, 0)
 
+        test = np.empty_like(flat_vnv, dtype=np.float32)
+        glGetBufferSubData(GL_ARRAY_BUFFER, 0, flat_vnv.itemsize*flat_vnv.size, test.ctypes.data_as(ctypes.c_void_p))
+
+       
         mask = np.sum(res, axis= -1) != 0
         img[mask] = res[mask, :3]
+        
+        # return res[...,:3]
         return img
 
         
@@ -699,19 +810,24 @@ def save(path, img):
 
 
 
-
+import igl 
 
 def draw_mesh_to_img(img, Q, Rt, v, f, color, width):
     """
     img : background image
     """
     img = np.copy(img)
-    
+
+    # v, f = igl.read_triangle_mesh("./prep_data/generic_neutral_mesh.obj")
+    v = v.astype(np.float32)
+    f = f.astype(np.uint32)
     vec1 = v[f[:, 1]] - v[f[:, 0]]
     vec2 = v[f[:, 2]] - v[f[:, 0]]
     v_normal = np.zeros_like(v)
     v_normal_denorm = np.zeros((len(v), 1))
     f_normal = np.cross(vec1, vec2, axis=-1)
+    f_normal /= np.linalg.norm(f_normal, axis=-1).reshape(-1,1)
+ 
     for fi, (fn, (vi1,vi2,vi3)) in  enumerate(zip(f_normal, f)):
         v_normal[vi1] += fn
         v_normal[vi2] += fn

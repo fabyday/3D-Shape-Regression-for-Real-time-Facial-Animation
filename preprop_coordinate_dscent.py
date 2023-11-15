@@ -272,33 +272,33 @@ class PreProp:
     def get_combine_bar_model(self, neutral_bar, ids_bar=None, expr_bar=None, w_i=None, w_e=None ):
         v_size, dim = neutral_bar.shape
         res = np.zeros((v_size*dim, 1), dtype=np.float32)
-        if ids_bar == None or w_i == None:
+        if ids_bar is not None and w_i is not None:
             id_num, id_v_size, id_dim = ids_bar.shape 
             reshaped_id = ids_bar.reshape(id_num, id_v_size*id_dim).T
             res += reshaped_id@w_i.reshape(-1,1) 
 
-        if expr_bar == None or w_e == None:
+        if expr_bar is not None or w_e is not None:
             expr_num, expr_v_size, expr_dim = expr_bar.shape
             reshaped_expr = expr_bar.reshape(expr_num, expr_v_size*expr_dim).T
             res += reshaped_expr@w_e.reshape(-1,1)
 
-        res = res.reshape(v_size, id_dim)
+        res = res.reshape(v_size, dim)
         return neutral_bar + res
     
     def get_combine_model(self, neutral, ids=None, expr=None, w_i=None, w_e=None):
         
         v_size, dim = neutral.shape
         res = np.zeros((v_size*dim, 1), dtype=np.float32)
-        if ids == None or w_i == None :
-            id_num, id_v_size, id_dim = ids.shape 
+        if ids is not None or w_i is not None :
+            id_num, id_v_size, id_dim = ids.shape
             new_ids = ids.reshape(id_num, id_v_size*id_dim).T
             res +=  new_ids@w_i
 
-        if expr == None or w_e == None :
+        if expr is not None or w_e is not  None :
             expr_num, expr_v_size, expr_dim = expr.shape
             new_exps = expr.reshape(expr_num, expr_v_size*expr_dim ).T
             res += new_exps@w_e
-        res = res.reshape(id_v_size, id_dim)
+        res = res.reshape(v_size, dim)
         return neutral + res
     
     def get_bars(self, neutral, ids, exprs, sel_lmk_idx):
@@ -544,7 +544,7 @@ class PreProp:
         return x, grad_history, alpah_history
     
     # def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
-    def shape_fit(self, id_meshes, expr_meshes, lmk_idx, force_recalcutaion = True):
+    def shape_fit(self, id_meshes, expr_meshes, lmk_idx, force_recalcutaion = False):
         # Q = clib.calibrate('./images/checker4/*.jpg')
         # extract actor-specific blendshapes
         # iteratively fit shapes
@@ -1342,6 +1342,10 @@ class PreProp:
             res_id_weight, _, _ = coordinate_descent(id_cost_funciton_builder(Q_list, Rt_list, lmk_idx_list, expr_weights, lmk_2d_list), init_id_weight, None, coordinate_descent_iter, clip_func=clip_function4)
             id_weight  = res_id_weight
             print("id expression :", id_weight.ravel())
+            
+            np.save(osp.join(self.save_root_dir, "Q_list_iter_{}".format(iter_i)), np.array(Q_list))
+            np.save(osp.join(self.save_root_dir, "Rt_list_iter_{}".format(iter_i)), np.array(Rt_list))
+
             for Q_id,(Q, Rt) in enumerate(zip(Q_list, Rt_list)):
                 name = self.img_list[Q_id]['name']
                 np.savetxt("cd_test/Q_iter_{}_{}".format(iter_i,name), Q)
@@ -1399,6 +1403,22 @@ class PreProp:
         # define user-specific identity weight and expression.
         lmk_idx = np.array(lmk_idx)
         lmk_idx_list = np.stack([lmk_idx for _ in range(len(self.img_list))],axis=0)
+        
+        import re
+        rex = re.compile(r"list_(\d+)")
+
+        def matcher(x):
+            nonlocal rex 
+            return int(rex.findall(x)[0])
+
+        Q_list_paths = glob.glob(osp.join(self.save_root_dir, "Q_list_iter_*"))
+        Rt_list_paths = glob.glob(osp.join(self.save_root_dir, "Rt_list_iter_*"))
+        recent_Q_list_path = sorted(Q_list_paths, key=matcher)[-1]
+        recent_Rt_list_path = sorted(Rt_list_paths, key=matcher)[-1]
+
+        Q_list = np.load(osp.join(self.save_root_dir, recent_Q_list_path))
+        Rt_list = np.load(osp.join(self.save_root_dir, recent_Rt_list_path))
+
 
         neutral = self.neutral_mesh_v
 
@@ -1454,7 +1474,8 @@ class PreProp:
 
             sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
             for lmk2d in lmk_2ds:
-                init_weight = np.zeros_like((len(expr_meshes)+6, 1), dtype=np.float32) 
+                init_weight = np.zeros ((len(expr_meshes)+6, 1), dtype=np.float32) 
+                Q = np.identity(3, dtype=np.float32)
                 self.coordinate_descent(cost_function_builder(Q, user_specific_neutral_bar, user_specific_expr_bar), init_weight, lmk2d, iter_nums = 20 ,clip_func = clip_function )
 
 
@@ -1480,13 +1501,12 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='parser')
 
-    parser.add_argument('--dir',          type=str,   default="./cd_test")
+    parser.add_argument( '--dir', type=str, default="./cd_test" )
     args    = parser.parse_args()
-    args.dir
     p = PreProp("landmark/meta.yaml", "prep_data")
     p.build()
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
     p.extract_train_set_blendshapes()
