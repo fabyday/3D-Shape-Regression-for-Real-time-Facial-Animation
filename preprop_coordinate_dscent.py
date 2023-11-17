@@ -513,14 +513,14 @@ class PreProp:
         concat_img = vis.resize_img( concat_img, 1000)
         vis.show("test", concat_img )
 
-    def find_contour(lmk2d, proj_3d_v):
+    def find_contour(self, lmk2d, proj_3d_v):
         hull = sp.ConvexHull(proj_3d_v)
         convex_index = hull.vertices
         kd = sp.cKDTree(proj_3d_v[convex_index, :])
         d, idx = kd.query(lmk2d)
         return convex_index[idx]
 
-    def coordinate_descent_LBFGS(self, cost_function, init_x, y, iter_nums, eps = 10e-7, clip_func = None, camera_refinement_func = None ):
+    def coordinate_descent_LBFGS(self, cost_function, init_x, y, iter_nums, eps = 10e-7, clip_func = None, camera_refinement_func = None ,  contour_mapper_func = None):
         """
             coordinate descent by LBFGS(super duper)
             si sisisisisisisisi
@@ -533,6 +533,7 @@ class PreProp:
 
         def cost_f(x):
             return cost_function(x, y)
+        
         def cost_function_builder(ind, orig_x):
             def wrapper(x):
                 copied_x = np.copy(orig_x)
@@ -601,11 +602,14 @@ class PreProp:
                 # res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = bounds,options=options)
                 x[i, :] = res.x
                 # x = clip_func(x)
-            
             if abs(f_val - prev_f_val) < 10:
             # if np.all( np.abs(grad_history[iter_i]) < 10e-7, axis=0):
                 print("stopped at iteration : ", iter_i, ". all gradient is closed to zero, stop optimizing.")
                 break
+            
+            if contour_mapper_func is not None :
+                contour_mapper_func(x)
+
             prev_f_val = f_val
             # print("iter : ", iter_i, "cost : ", f_val, "\nx", x.ravel())
             print("iter : ", iter_i, "cost : ", f_val, "grad mean : ", np.mean(grad_history[iter_i]))
@@ -1574,12 +1578,12 @@ class PreProp:
 
         gen_zero_expression_weight = np.zeros((expr_num, 1), dtype=np.float32)
 
+
         user_specific_neutral = self.get_combine_model(neutral=neutral, ids=ids, expr=expr, w_i = self.id_weight, w_e= gen_zero_expression_weight)
         user_specific_expr = expr
-
-        user_specific_neutral_bar, _, user_specific_expr_bar = self.get_bars(neutral=user_specific_neutral, 
-                                                                             ids = ids, exprs=user_specific_expr, 
-                                                                             sel_lmk_idx = lmk_idx)
+        # user_specific_neutral_bar, _, user_specific_expr_bar = self.get_bars(neutral=user_specific_neutral, 
+        #                                                                      ids = ids, exprs=user_specific_expr, 
+        #                                                                      sel_lmk_idx = lmk_idx)
         
         def clip_function(x):
             x[:-6, :] = np.clip(x[:-6, :], a_min=0.0, a_max = 1.0)
@@ -1611,7 +1615,7 @@ class PreProp:
                 return rx,ry,rz, tvec[0, 0 ], tvec[1, 0], tvec[2, 0]
             return camera_posit_func
         
-        def camera_posit_func_builder(Rt):
+        def dummpy_camera_posit_func_builder(A, B, C):
             def camera_posit_func(e, p):
                 return Rt.ravel()
             return camera_posit_func
@@ -1633,7 +1637,12 @@ class PreProp:
                 w_e = x[:-6, 0]
                 Rt= self.get_Rt(*x[-6:,0].ravel())
                 return expression_cost_funcion(Q, Rt, neutral_bar, expr_bar, w_e,y, alpha_star)
-            return wrapper
+            def redefine_bars(new_neutral_bar, new_expr_bar):
+                nonlocal neutral_bar, expr_bar
+                netural_bar = new_neutral_bar 
+                expr_bar = new_expr_bar
+
+            return wrapper, redefine_bars
         
         for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())): 
             
@@ -1647,10 +1656,13 @@ class PreProp:
             sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
             sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
             sel_lmk_idx_list = [lmk_idx  for _ in range(len(item))]
-            for name, sel_img, idx, lmk2d in zip(name_list, sel_imgs, index_list, lmk_2ds):
+            for name, sel_pts3d_idx, sel_img, idx, lmk2d in zip(name_list, sel_lmk_idx_list, sel_imgs, index_list, lmk_2ds):
                 Q = Q_list[idx]
                 Rt = Rt_list[idx]
 
+                user_specific_neutral_bar, _, user_specific_expr_bar = self.get_bars(neutral=user_specific_neutral, 
+                                                                             ids = ids, exprs=user_specific_expr, 
+                                                                             sel_lmk_idx = sel_pts3d_idx)
                 init_weight = np.ones ((len(expr_meshes)+6, 1), dtype=np.float32) * 0.1
                 r_x,r_y,r_z = self.decompose_Rt(Rt)
                 tx, ty, tz = Rt[:, -1]
@@ -1660,10 +1672,31 @@ class PreProp:
                 # res, _, _ = self.coordinate_descent(cost_function_builder(Q, user_specific_neutral_bar, \
                 #                                                         exp_mapper(user_specific_expr_bar, self.norm_base_expr_mesh_index), alpha_star = np.zeros_like(init_weight[:-6, :])), \
                 #                                     init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function )
+                
+                cost_f, reset_param_f = cost_function_builder(Q, user_specific_neutral_bar, exp_mapper(user_specific_expr_bar, self.norm_base_expr_mesh_index), alpha_star = np.zeros_like(init_weight[:-6, :]))
+        
+                def contour_remap(w):
+                    nonlocal reset_param_f, lmk2d, Q, sel_pts3d_idx
+                    expr_weight = w[:-6, :]
+                    Rt = self.get_Rt(*w[-6:, :].ravel())
 
-                res, _, _ = self.coordinate_descent_LBFGS(cost_function_builder(Q, user_specific_neutral_bar, \
-                                                                        exp_mapper(user_specific_expr_bar, self.norm_base_expr_mesh_index), alpha_star = np.zeros_like(init_weight[:-6, :])), \
-                                                    init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, camera_refinement_func= camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar) )
+                    pose3d = self.get_combine_model(user_specific_neutral, None, user_specific_expr, None, expr_weight)
+                    pose2d = self.add_Rt_to_pts(Q, Rt,  pose3d)
+                    contour = self.find_contour(lmk2d[self.contour['full_index']], pose2d)
+
+
+                    for con_i, idx in enumerate(self.contour['full_index']):
+                        sel_pts3d_idx[idx] = contour[con_i]
+
+                    user_specific_neutral_bar, _, user_specific_expr_bar = self.get_bars(neutral=user_specific_neutral, 
+                                                                             ids = ids, exprs=user_specific_expr, 
+                                                                             sel_lmk_idx = sel_pts3d_idx)
+                    reset_param_f(user_specific_neutral_bar, user_specific_expr_bar)
+                
+                res, _, _ = self.coordinate_descent_LBFGS(cost_f,
+                                                    init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, 
+                                                    camera_refinement_func= camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar),
+                                                    contour_mapper_func= contour_remap )
 
                 expr_weight = res[:-6, :]
                 expr_weight = weight_mapper(expr_weight, self.norm_base_expr_mesh_index_revert)
