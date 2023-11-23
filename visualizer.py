@@ -594,12 +594,12 @@ class MeshWriter:
         # glDisable(GL_CULL_FACE)
         glCullFace(GL_BACK)
         glEnable(GL_CULL_FACE)
-
         
+        glEnable(GL_DEPTH_TEST);  
+        glEnable(GL_DEPTH_CLAMP)
+        glDepthFunc(GL_LESS)
         glViewport(0,0, self.width, self.height)
         glUseProgram(self.gl_program)
-        glEnable(GL_DEPTH_TEST);  
-        glDepthFunc(GL_LESS)
         # glCullFace()
         glClearColor(0.0, 0.0, 0.0, 0.0)
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
@@ -812,7 +812,7 @@ def save(path, img):
 
 import igl 
 
-def draw_mesh_to_img(img, Q, Rt, v, f, color, width):
+def draw_mesh_to_img(img, Q, Rt, v, f, color, width = None ,caption = None ):
     """
     img : background image
     """
@@ -845,8 +845,9 @@ def draw_mesh_to_img(img, Q, Rt, v, f, color, width):
         resized_img = img
     else:
         resized_img = resize_img(img, width)
-
-
+    if caption is not None:
+        put_text(resized_img, caption, color, base_loc=(0,0), \
+             font_face = 1, font_scale=2, thickness=1, linetype=cv2.LINE_AA, fit_bool=False )
     return resized_img
 
 
