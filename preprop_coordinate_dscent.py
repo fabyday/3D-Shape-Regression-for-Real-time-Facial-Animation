@@ -526,6 +526,18 @@ class PreProp:
         vis.show("test", concat_img )
 
     def find_contour(self, lmk2d, proj_3d_v):
+        mask_indices = [ii for ii in  range(len(proj_3d_v)) if ii not in  self.unconcern_mesh_idx]
+        full_version = proj_3d_v
+        proj_3d_v = np.zeros((len(full_version) - len(self.unconcern_mesh_idx), 2))
+        mapper = np.zeros((len(proj_3d_v)), dtype = np.uint32)
+        # proj_3d_v = proj_3d_v[mask_indices, :]
+        idx = 0
+        for ii in range(len(full_version)):
+            if ii not in self.unconcern_mesh_idx:
+                proj_3d_v[idx, :] = full_version[ii, :]
+                mapper[idx] = ii
+                idx += 1
+
         hull = sp.ConvexHull(proj_3d_v, qhull_options="QJ")
         convex_index = hull.vertices
         # import matplotlib.pyplot as plt 
@@ -536,7 +548,8 @@ class PreProp:
         # plt.show()
         kd = sp.cKDTree(proj_3d_v[convex_index, :])
         d, idx = kd.query(lmk2d)
-        return convex_index[idx]
+        return mapper[convex_index[idx]]
+        # return convex_index[idx]
     
     
     
@@ -713,8 +726,9 @@ class PreProp:
 
                 # opt.minimize(fun=cost_f, x0 = init_x, jac= ,method="BFGS", options=options)
                 res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = w_bounds, options=options)
-                # res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = bounds,options=options)
                 x[i, :] = res.x
+
+                # res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = bounds,options=options)
                 # x = clip_func(x)
 
 
@@ -833,7 +847,7 @@ class PreProp:
                 return 
 
 
-
+        self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
         lmk_idx = np.array(lmk_idx)
         lmk_idx_list = np.stack([lmk_idx for _ in range(len(self.img_list))],axis=0)
 
@@ -1263,6 +1277,7 @@ class PreProp:
 
 
         def find_contour(lmk2d, proj_3d_v):
+            return self.find_contour(lmk2d, proj_3d_v)
             hull = sp.ConvexHull(proj_3d_v)
             convex_index = hull.vertices
             kd = sp.cKDTree(proj_3d_v[convex_index, :])
@@ -1671,6 +1686,7 @@ class PreProp:
 
         if not hasattr(self, "id_weight"):
             self.id_weight = np.load("./cd_test/identity_weight.txt.npy")
+            self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
 
         global lmk_idx
         # define user-specific identity weight and expression.
@@ -1739,6 +1755,7 @@ class PreProp:
                 nonlocal neutral_bar, exprs_bar
                 if is_First :
                     ind = [ii for ii in range(len(neutral_bar)) if ii not in self.contour['full_index']]
+                # ind = [ii for ii in range(len(neutral_bar)) if ii in self.contour['full_index']]
                     neutral_bar = neutral_bar[ind, :]
                     exprs_bar = exprs_bar[:, ind, :]
                     pts2d = pts2d[ind, :]
@@ -1919,5 +1936,5 @@ if __name__ == "__main__":
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
     p.extract_train_set_blendshapes()
