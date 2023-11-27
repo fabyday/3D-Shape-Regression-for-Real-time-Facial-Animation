@@ -595,7 +595,8 @@ class PreProp:
                 pts_2d = self.add_Rt_to_pts(Q, Rt, pts_3d)
 
                 if not (Q is None or  neutral is None or exprs is None or f is None ): 
-                    res = vis.draw_mesh_to_img(img, Q, Rt, pts_3d, f, color = m_color)
+                    # res = vis.draw_mesh_to_img(img, Q, Rt, pts_3d, f, color = m_color)
+                    pass
 
 
                 # 
@@ -606,27 +607,32 @@ class PreProp:
                 x_info = kwargs.get("x_info", None)
                 y_info = kwargs.get("y_info", None)
 
+                nose_idx = self.nose["horizontal"]  + self.nose["vertical"]
+
                 prev_lmk_idx = options.get("prev_lmk_idx", None )
+                res = np.copy(img)
                 if not (lmk_idx is None or  contour_index is None) :
                     print(prev_lmk_idx == lmk_idx)
                     if  prev_lmk_idx is not None:
                         pts_color = x_info.get("pts", (255,0,0))
                         prev_pts3d = self.get_combine_model(neutral, None, exprs,None, w )
                         prev_pts_2d = self.add_Rt_to_pts(Q, Rt, prev_pts3d)
-                        res = vis.draw_contour(res, prev_pts_2d[prev_lmk_idx, :], contour_index, (255,0,255), (255,0,255))
+                        # res = vis.draw_contour(res, prev_pts_2d[prev_lmk_idx, :], contour_index, (255,0,255), (255,0,255))
                         if x_info is not None :
-                            res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index],  prev_pts_2d[prev_lmk_idx, :][contour_index], color=(255,255,0))
+                            # res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index],  prev_pts_2d[prev_lmk_idx, :][contour_index], color=(255,255,0))
+                            res = vis.draw_circle(pts_2d[lmk_idx, :][nose_idx], img, (255,0,255), radius=3)
+                            res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][nose_idx],  y[nose_idx], color=(255,255,0))
                     if x_info is not None:
                         pts_color = x_info.get("pts", (255,0,0))
                         line_color = x_info.get("line", (255,255,0))
-                        res = vis.draw_contour(res, pts_2d[lmk_idx, :], contour_index, pts_color, line_color)
+                        # res = vis.draw_contour(res, pts_2d[lmk_idx, :], contour_index, pts_color, line_color)
                     if y_info is not None:
                         pts_color = y_info.get("pts", (0,0,255))
                         line_color = y_info.get("line", (0,255,255))
-                        res = vis.draw_contour(res, y, contour_index, pts_color, line_color)
+                        # res = vis.draw_contour(res, y, contour_index, pts_color, line_color)
                     if x_info is not None and y_info is not None: 
-                        res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index], y[contour_index])
-
+                        # res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index], y[contour_index])
+                        pass
                         
                     vis.set_delay(1)
 
@@ -1871,7 +1877,16 @@ class PreProp:
                 pts3d = self.get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
 
                 # _, Rt = self.find_camera_matrix(pts3d, pts2d, guessed_projection_Qmat=Q )
-
+                nose = self.nose['horizontal'] +self.nose['vertical']
+                nose = self.nose['vertical']
+                new_pts3d = np.copy(pts3d)
+                new_pts2d = np.copy(pts2d)
+                for ii in nose:
+                    new_pts3d[ii, :] *= 1
+                    new_pts2d[ii, :] *= 1
+                pts2d = new_pts2d
+                pts3d = new_pts3d
+                # succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
                 succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
                 rot = cv2.Rodrigues(rvec)[0]
                 rx,ry,rz = self.decompose_Rt(rot)
@@ -1930,6 +1945,9 @@ class PreProp:
 
             sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
             sel_lmk_idx_list = [np.copy(lmk_idx)  for _ in range(len(item))]
+
+
+
             for name, sel_pts3d_idx, sel_img, idx, lmk2d, pre_def_w in zip(name_list, sel_lmk_idx_list, sel_imgs, index_list, lmk_2ds, pre_def_weights):
                 Q = Q_list[idx]
                 Rt = Rt_list[idx]

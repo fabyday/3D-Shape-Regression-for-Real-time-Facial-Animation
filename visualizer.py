@@ -224,9 +224,10 @@ def put_text(img, caption, color, base_loc, font_face, font_scale, thickness, li
 
 
 def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10):
+    img = np.copy(img)
     for vv in v:
         cv2.circle(img, center=vv.astype(int), radius=radius, color=colors, thickness=2)
-
+    return img
 
 def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0), width = None, caption = "" ):
     cp_img = copy.deepcopy(img)
