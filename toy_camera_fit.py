@@ -1135,6 +1135,26 @@ class PreProp:
             x_3d = to_homogeneous(x_3d)
             # setup matrix A
             mat = np.zeros((2*len(x_3d), 12))
+            nose =self.nose["vertical"] + self.nose["horizontal"]
+
+            x_3d = np.copy(x_3d)
+            x_2d = np.copy(x_2d)
+            x_3d_mean = np.zeros((1,4), np.float32)
+            x_2d_mean = np.zeros((1,2), np.float32)
+            x_3d_mean[:, -1] = 1.0
+            coeff = 1.3
+            for i in range(len(x_3d)):
+                if i in nose:
+                    x_3d[i, :-1]  *= coeff * x_3d[i,:-1]
+                    x_2d[i, :]  *= coeff * x_2d[i,:]
+                x_2d_mean += x_2d[i, :]
+                x_3d_mean[:, :-1] += x_3d[i, :-1]
+            x_2d_mean /= len(x_3d)
+            x_3d_mean[:, :-1] /= len(x_3d)
+            x_3d /= x_3d_mean
+            x_2d /= x_2d_mean
+
+
             for idx in range(len(x_3d)):
                 add_coeff_to_A(mat, x_3d, x_2d, idx)
             mat = mat.T @mat
@@ -1864,7 +1884,7 @@ class PreProp:
 
             return new_z
         
-        def camera_posit_func_builder(Q, neutral_bar ,exprs_bar):
+        def camera_posit_func_builder(Q, neutral_bar ,exprs_bar, Rt = None):
             def camera_posit_func(expr_weight, pts2d, is_First  = False):
                 nonlocal neutral_bar, exprs_bar
                 if is_First :
@@ -1881,13 +1901,28 @@ class PreProp:
                 nose = self.nose['vertical']
                 new_pts3d = np.copy(pts3d)
                 new_pts2d = np.copy(pts2d)
-                for ii in nose:
-                    new_pts3d[ii, :] *= 1
-                    new_pts2d[ii, :] *= 1
-                pts2d = new_pts2d
-                pts3d = new_pts3d
+                pts3d_mean = np.zeros((len(new_pts3d), 1))
+                pts2d_mean = np.zeros((len(new_pts3d), 1))
+                pts3d_mean = np.zeros((1,3), dtype=np.float32)
+                pts2d_mean = np.zeros((1,2), dtype=np.float32)
+                for i in range(len(new_pts3d)) :
+
+                    if i in nose:
+                        new_pts3d[i, :] *= 1
+                        new_pts2d[i, :] *= 1
+                    pts3d_mean += new_pts3d[i, :]
+                    pts2d_mean += new_pts2d[i, :]
+                pts3d_mean /= len(new_pts3d)
+                pts2d_mean /= len(new_pts2d)
+                pts2d = new_pts2d-pts2d_mean
+                pts3d = new_pts3d-pts3d_mean
+                if Rt is not None  and False:
+                    rx,ry, rz = self.decompose_Rt(Rt)
+                    tv = Rt[:, -1].reshape(-1,  1)
+                    succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)), useExtrinsicGuess=True, rvec=np.array([rx,ry,rz]), tvec=tv)
                 # succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
-                succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
+                else:
+                    succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)) )
                 rot = cv2.Rodrigues(rvec)[0]
                 rx,ry,rz = self.decompose_Rt(rot)
                 # rx, ry, rz = self.decompose_Rt(Rt)
@@ -1971,7 +2006,7 @@ class PreProp:
                 reg_alpha_star = copy.deepcopy(init_weight[:-6, :])
                 # cost_f, reset_param_f = cost_function_builder(Q, user_specific_neutral_bar, exp_mapper(user_specific_expr_bar, self.norm_base_expr_mesh_index), alpha_star = reg_alpha_star)
                 cost_f, reset_param_f = cost_function_builder(Q, user_specific_neutral_bar, user_specific_expr_bar, alpha_star = reg_alpha_star)
-                camera_func, reset_cam_param_f = camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar)
+                camera_func, reset_cam_param_f = camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar, Rt=Rt)
                 
                 def contour_remap(w):
                     nonlocal reset_param_f, reset_cam_param_f, lmk2d, Q, sel_pts3d_idx
@@ -2065,5 +2100,5 @@ if __name__ == "__main__":
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
     p.extract_train_set_blendshapes()

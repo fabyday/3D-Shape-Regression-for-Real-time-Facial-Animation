@@ -526,17 +526,21 @@ class PreProp:
         vis.show("test", concat_img )
 
     def find_contour(self, lmk2d, proj_3d_v):
+        
         mask_indices = [ii for ii in  range(len(proj_3d_v)) if ii not in  self.unconcern_mesh_idx]
+
         full_version = proj_3d_v
         proj_3d_v = np.zeros((len(full_version) - len(self.unconcern_mesh_idx), 2))
         mapper = np.zeros((len(proj_3d_v)), dtype = np.uint32)
         # proj_3d_v = proj_3d_v[mask_indices, :]
         idx = 0
+        self.contour_pts_idx
         for ii in range(len(full_version)):
             if ii not in self.unconcern_mesh_idx:
                 proj_3d_v[idx, :] = full_version[ii, :]
                 mapper[idx] = ii
                 idx += 1
+            
 
         hull = sp.ConvexHull(proj_3d_v, qhull_options="QJ")
         convex_index = hull.vertices
@@ -955,6 +959,7 @@ class PreProp:
 
 
         self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
+        self.contour_pts_idx = np.load("./contour_pts.npy")
         lmk_idx = np.array(lmk_idx)
         lmk_idx_list = np.stack([lmk_idx for _ in range(len(self.img_list))],axis=0)
 
@@ -1795,6 +1800,7 @@ class PreProp:
         if not hasattr(self, "id_weight"):
             self.id_weight = np.load("./cd_test/identity_weight.txt.npy")
             self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
+            self.contour_pts_idx = np.load("./contour_pts.npy")
 
         global lmk_idx
         # define user-specific identity weight and expression.
