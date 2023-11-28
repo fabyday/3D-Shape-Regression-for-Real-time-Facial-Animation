@@ -531,15 +531,18 @@ class PreProp:
 
         full_version = proj_3d_v
         proj_3d_v = np.zeros((len(full_version) - len(self.unconcern_mesh_idx), 2))
+        proj_3d_v = np.zeros((len(self.contour_pts_idx), 2), dtype=np.float32)
         mapper = np.zeros((len(proj_3d_v)), dtype = np.uint32)
         # proj_3d_v = proj_3d_v[mask_indices, :]
         idx = 0
-        self.contour_pts_idx
+        
+        contour_candidate_idx = set(self.contour_pts_idx.ravel()) - set(self.unconcern_mesh_idx.ravel())
         for ii in range(len(full_version)):
-            if ii not in self.unconcern_mesh_idx:
+            if ii in contour_candidate_idx:
                 proj_3d_v[idx, :] = full_version[ii, :]
                 mapper[idx] = ii
                 idx += 1
+            
             
 
         hull = sp.ConvexHull(proj_3d_v, qhull_options="QJ")
@@ -1412,9 +1415,9 @@ class PreProp:
                 contour = find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
                 new_contour =  pts2d[contour]
 
-                gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark")
+                gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark", radius=10)
                 pred_lmk_img = vis.draw_pts(img, pts2d[lmk_idx_list[index]], color=(0,0,255), width=1000, caption = "Fitting Landmark")
-                pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 1, caption = "Fitting Landmark : iteration : "+iter_str)
+                pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 10, caption = "Fitting Landmark : iteration : "+iter_str)
                 # new_cont_img = vis.draw_pts(img, new_contour, color=(0,0,255))
                 new_cont_img = vis.draw_contour(img, pts2d, contour, color=(0,0,255), line_color=(0,255,0), caption=" ")
                 gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], color=(0,255,255))
@@ -2053,5 +2056,5 @@ if __name__ == "__main__":
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
     p.extract_train_set_blendshapes()
