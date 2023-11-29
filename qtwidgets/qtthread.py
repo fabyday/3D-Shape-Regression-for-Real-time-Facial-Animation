@@ -19,6 +19,7 @@ class Worker(QThread):
         self.mutex = QMutex()
 
     def run(self, runnable):
+        
         pass
 
 

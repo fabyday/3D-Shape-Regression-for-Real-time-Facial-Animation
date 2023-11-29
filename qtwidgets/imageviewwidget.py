@@ -13,7 +13,8 @@ import yaml
 from . import qtthread
 from qtwidgets import metadata
 
-
+class ImageClassWidget():
+    pass
 
 
 class ImageViewWidget(QGraphicsView):

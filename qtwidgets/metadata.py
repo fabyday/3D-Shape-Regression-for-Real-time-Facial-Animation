@@ -22,6 +22,8 @@ mediapipe_based_metadata_preset = {}
 
 metadata_default_filename = "meta.yaml"
 
+
+#define fowrad
 class EditorMeta:
     pass
 
@@ -186,6 +188,7 @@ class ImageMeta:
         
 
     def __init__(self) -> None:
+        self.type = "Image Meta"
         self.image_root_location = None 
         self.image_metadata_location = None 
         self.category_list = []
@@ -205,32 +208,78 @@ class ImageMeta:
             raise MetaNotFoundException("Image Meta initialization was not succeed.")
 
 class DetectorMeta:
+    class MetaKey:
+        type = "type"
+        detector_location = "detector_location"
+        detector_metadata_location = "detector_metadata_location"
+        detector_name = "detector_name"
     def __init__(self):
-        self.detector_name = None 
-        self.detector_metadata_location = None
-        self.detector_location = None 
+        self.m_type = "Detector Meta"
+        self.m_detector_name = None 
+        self.m_detector_metadata_location = None
+        self.m_detector_location = None 
         
-        self.editor_metadata = None 
+        self.m_editor_metadata_object = None 
     
-    def get_detector_path(self):
-        return self.detector_location
-    def get_dectector_name(self):
-        return self.detector_name
+    @property
+    def dectector_name(self):
+        return self.m_detector_name
+    
+    @dectector_name.setter
+    def detector_name(self, name : str):
+        self.m_detector_name = name
 
-    def get_dectector_metadata_location(self):
+    @property
+    def detector_location(self):
+        return self.m_detector_location
+    
+    @detector_location.setter
+    def detector_location(self, path):
+        self.m_detector_location = path
+    @property
+    def detector_metadata_location(self):
         return self.detector_metadata_location
-    def set_editor_meta_object(self, o : EditorMeta):
-        self.editor_metadata = o
+    @detector_metadata_location.setter
+    def detector_metadata_location(self, arg:str):
+        self.m_detector_metadata_location = arg 
 
-    def load(self, o):
+    @property
+    def editor_metadata_object(self):
+        return self.m_editor_metadata_object
+
+    @editor_metadata_object.setter
+    def editor_metadata_object(self, o : EditorMeta):
+        self.m_editor_metadata = o
+    
+    @property
+    def type(self):
+        return self.m_type
+
+    def load(self, o, editor_meta = None):
         if isinstance(o, str):
             with open(o, "r") as fp:
-                meta_infos = yaml.load(o, yaml.FullLoader)
-            meta_type = meta_infos[EditorMeta.MetaKey.type]
+                o = yaml.load(o, yaml.FullLoader)
+            meta_type = o.get(EditorMeta.MetaKey.type, None)
+            
         elif isinstance(o, dict):
-            pass
+            meta_type = o.get(EditorMeta.MetaKey.type, None)
         else:
             raise MetaNotFoundException("DetectorMeta initialization was not succeed.")
+
+        if meta_type == self.m_type:
+            self.editor_metadata_object = editor_meta
+            self.detector_name = o.get(DetectorMeta.MetaKey.detector_name)
+            self.detector_location = o.get(DetectorMeta.MetaKey.detector_location)
+            self.detector_metadata_location =     o.get(DetectorMeta.MetaKey.detector_metadata_location)
+            self.succ_load = True
+
+    def __bool__(self):
+        if hasattr(self, "succ_load"):
+            return True
+        return False
+
+    def __nonzero__(self):
+        return self.__bool__()
 
 class MetaDataManager:
     def __init__(self):
@@ -267,6 +316,41 @@ class ConfigurationEditor(QWidget):
 
 
 if __name__ == "__main__":
+
+
+    test_detector_data = {"type" : "Detector Meta",
+        "detector_location" :"test_loc/test.txt",
+        "detector_metadata_location" : "test_meta/meta.txt",
+        "detector_name" :"new_meta" }
+    
+    
+    class MetaReduplicationException(Exception):
+        def __init__(self, *args):
+            super(Exception, self).__init__(*args)
+
+    default_editor_meta_path = "./editor"
+    test_editor_data =  {"type" : "Editor Meta", 
+                        "editor_meta_location" : "editor/meta.txt",
+                        "width" : 1000,
+                        "height" : 2000,
+                        "root_meta_loc" : "root/meta.txt",
+                        "dectector_meta_location" : "meta_loca",
+                        "image_meta_location" : "image/meta.txt"                     
+                      }
+    test_image_meta = {
+        "type" : "Image Meta"
+        "image_root_location" : "image/root"
+         "image_metadata_location" : "image/root/location"
+        "category_list" : ["test1",]
+        
+
+    def __init__(self) -> None:
+        self.image_root_location = None 
+        self.image_metadata_location = None 
+        self.category_list = []
+
+        self.editor_metadata = None 
+    }
 
 
     from PyQt5.QtWidgets import QApplication
