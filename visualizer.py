@@ -223,10 +223,10 @@ def put_text(img, caption, color, base_loc, font_face, font_scale, thickness, li
     cv2.putText(img, caption, (base_loc_x , base_loc_y+hei+2), font_face, font_scale, color, thickness, cv2.LINE_AA)
 
 
-def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10):
+def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10, thickness=2):
     img = np.copy(img)
     for vv in v:
-        cv2.circle(img, center=vv.astype(int), radius=radius, color=colors, thickness=2)
+        cv2.circle(img, center=vv.astype(int), radius=radius, color=colors, thickness=thickness)
     return img
 
 def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0), width = None, caption = "" ):
@@ -291,11 +291,11 @@ def draw_pts_mapping(img, pts1_list, pts2_list, color = (0,0,255), width = None,
             font_face = 1, font_scale=2, thickness=1, linetype=cv2.LINE_AA, fit_bool=False )
     return resized_img
 
-def draw_pts(img, pts_2d, color = (0,0,255), width = None, radius = 10, caption=""):
+def draw_pts(img, pts_2d, color = (0,0,255), width = None, radius = 10, thickness = 2, caption=""):
     
     cp_img = copy.deepcopy(img)
     
-    draw_circle(pts_2d, cp_img, color, radius)
+    cp_img = draw_circle(pts_2d, cp_img, color, radius,thickness=thickness)
     if width == None :
         resized_img = cp_img
     else:

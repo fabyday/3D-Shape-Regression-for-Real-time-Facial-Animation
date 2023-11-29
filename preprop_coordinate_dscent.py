@@ -532,11 +532,12 @@ class PreProp:
         full_version = proj_3d_v
         proj_3d_v = np.zeros((len(full_version) - len(self.unconcern_mesh_idx), 2))
         proj_3d_v = np.zeros((len(self.contour_pts_idx), 2), dtype=np.float32)
-        mapper = np.zeros((len(proj_3d_v)), dtype = np.uint32)
         # proj_3d_v = proj_3d_v[mask_indices, :]
         idx = 0
         
         contour_candidate_idx = set(self.contour_pts_idx.ravel()) - set(self.unconcern_mesh_idx.ravel())
+        mapper = np.zeros((len(contour_candidate_idx)), dtype = np.uint32)
+        proj_3d_v = np.zeros((len(contour_candidate_idx), 2), dtype=np.float32)
         for ii in range(len(full_version)):
             if ii in contour_candidate_idx:
                 proj_3d_v[idx, :] = full_version[ii, :]
@@ -1415,13 +1416,13 @@ class PreProp:
                 contour = find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
                 new_contour =  pts2d[contour]
 
-                gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark", radius=10)
+                gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark", radius=1, thickness=1)
                 pred_lmk_img = vis.draw_pts(img, pts2d[lmk_idx_list[index]], color=(0,0,255), width=1000, caption = "Fitting Landmark")
-                pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 10, caption = "Fitting Landmark : iteration : "+iter_str)
+                pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 1, caption = "Fitting Landmark : iteration : "+iter_str)
                 # new_cont_img = vis.draw_pts(img, new_contour, color=(0,0,255))
                 new_cont_img = vis.draw_contour(img, pts2d, contour, color=(0,0,255), line_color=(0,255,0), caption=" ")
-                gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], color=(0,255,255))
-                mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
+                gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], width=1000,color=(0,255,255))
+                # mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
                 vis.set_delay(1)
 
 
@@ -1431,12 +1432,13 @@ class PreProp:
                 #########################################################
                 #draw inner shapes
                 pred_lmk_img = vis.draw_pts_mapping(img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(255,0,0))
-                gt_lmk_img = vis.draw_pts(pred_lmk_img, np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(0,255,255))
-                pred_lmk_img = vis.draw_pts(gt_lmk_img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],color=(0,0,255),width=1000, caption = "Mapping Landmark")
+                pred_lmk_img = vis.draw_pts(pred_lmk_img, np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(0,255,255))
+                pred_lmk_img = vis.draw_pts(pred_lmk_img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],color=(0,0,255),width=1000, caption = "Mapping Landmark")
                 # checking cors mapping 
 
 
-                concat_img = vis.concatenate_img(2,2, pred_pts_img, mesh_contour_img, pred_lmk_img, mesh_overlay_image)
+                # concat_img = vis.concatenate_img(2,2, pred_pts_img, mesh_contour_img, pred_lmk_img, mesh_overlay_image)
+                concat_img = vis.concatenate_img(2,2, pred_pts_img, gt_lmk_img, pred_lmk_img, mesh_overlay_image)
                 vis.save(osp.join(root_path, name+"_{}".format(postfix)+".png"), concat_img)
                 concat_img = vis.resize_img( concat_img, 1000)
                 vis.show("test", concat_img )
@@ -1583,18 +1585,9 @@ class PreProp:
                     init_weight[-6:, :] = np.array([r_x, r_y, r_z, tx, ty, tz]).reshape(-1,1)
 
 
-                    init_weight[:len(ids_), :] = id_weight
-                    # init_weight[len(ids_):-6, :] = expr_weights[index_list[image_i]]
-                    init_weight[len(ids_):-6, :] = 0.0
+                    init_weight[:len(ids_), :] = id_weight #id weight init
+                    init_weight[len(ids_):-6, :] = 0.0 # # expr weight init
 
-                    # if i == 0 : # if first iteration
-                        # opt_result = coordinate_descent(exp_cost_builder(Q, neutral_, ids_, exprs_), init_weight, lmk2d[inner_face_lmk_idx], 3)
-                        # opt_result = coordinate_descent(exp_cost_builder2(Q, neutral_, ids_, exprs_), init_weight, lmk2d[inner_face_lmk_idx], 3)
-                        # opt_result = grad_descent(exp_cost_builder2(Q, neutral_, ids_, exprs_), init_weight, lmk2d[inner_face_lmk_idx], 3)
-                        # pass
-                    # else: # add contour
-                        # opt_result = coordinate_descent(exp_cost_builder2(Q, neutral_, ids_, exprs_), init_weight, lmk2d, 3)
-                    
                     def clip_function(x):
                         nonlocal ids_, exprs_
                         x[:len(ids_),0] = np.clip(x[:len(ids_), 0], -1.0, 1.0)
@@ -1868,7 +1861,7 @@ class PreProp:
             return new_z
         
         def camera_posit_func_builder(Q, neutral_bar ,exprs_bar):
-            def camera_posit_func(expr_weight, pts2d, is_First  = False):
+            def camera_posit_func(expr_weight, pts2d, is_First  = False, initial_Rt = None):
                 nonlocal neutral_bar, exprs_bar
                 if is_First :
                     ind = [ii for ii in range(len(neutral_bar)) if ii not in self.contour['full_index']]
@@ -2049,7 +2042,10 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='parser')
 
-    parser.add_argument( '--dir', type=str, default="./cd_test" )
+    parser.add_argument( '--save_dir', type=str, default="./cd_test" )
+    parser.add_argument( '--predef_dir', type=str, default="./cd_test" )
+    # parser.add_argument( '--predefined_data', type=str, default="./cd_test" )s
+
     args    = parser.parse_args()
     p = PreProp("landmark/meta.yaml", "prep_data")
     p.build()
