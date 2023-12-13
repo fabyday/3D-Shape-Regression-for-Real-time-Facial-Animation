@@ -11,18 +11,16 @@ import tqdm
 import scipy.spatial as sp
 import camera_clib as clib
 import data_loader as dl
-import open3d as o3d
-import open3d.visualization.rendering as rendering
 import visualizer as vis 
-from collections import Counter
+import cProfile 
 import scipy 
 import yaml
 import scipy.optimize as opt
 import copy 
-
-
+from multiprocessing import Pool
 import argparse
 
+import fmath
 np.set_printoptions(precision=3, suppress=True)
 
 lmk_idx = [
@@ -111,9 +109,12 @@ def natural_keys(text):
     '''
     return [ atof(c) for c in re.split(r'[+-]?([0-9]+(?:[.][0-9]*)?|[.][0-9]+)', text) ]
 
+
+
 class PreProp:
     def __init__(self, meta_dir, mesh_dir, lmk_meta = "./ict_lmk_info.yaml"):
-        
+        print("available thread")
+        self.pool = Pool(os.cpu_count())
         self.proj = np.identity(4)
         self.rigid_trans = np.identity(4)
         self.meta_location = meta_dir 
@@ -219,6 +220,7 @@ class PreProp:
 
         self.img_and_info = dict()
         self.img_list = []
+        self.neutral_list = []
         for category_idx, key in enumerate(self.img_meta.keys()):
             category_predef_weight = np.load(osp.join("./predefined_face_weight", key + ".npy"))
 
@@ -233,7 +235,9 @@ class PreProp:
                 name = meta_data['name']
                 lmk_data = read_lmk_meta(meta_data['landmark'])
                 img_data = cv2.imread(osp.join(self.img_root, name+self.img_file_ext))
-                img_data = {'category_index' : category_idx, 'index' : len(self.img_list), "name" : name, "lmk_data" : lmk_data, "img_data": img_data, "predef_weight" : category_predef_weight}
+                img_data = {'category_index' : category_idx, 'category_name' : key, 'index' : len(self.img_list), "name" : name, "lmk_data" : lmk_data, "img_data": img_data, "predef_weight" : category_predef_weight}
+                if key == "neutral_face":
+                    self.neutral_list.append(img_data)
                 self.img_list.append(img_data)
                 category.append(img_data)
 
@@ -263,13 +267,14 @@ class PreProp:
 
 
         
-    def convert_focal_length(w, h, mm_focal_length=36):
+    def convert_focal_length(self, w, h, mm_focal_length=36):
         """
         mm to pixel
+        12 ~ 50
         """
         m = max(h, w)
         standard_sensor_size = 36
-        m *mm_focal_length / standard_sensor_size
+        return m *mm_focal_length / standard_sensor_size
     
     def get_combine_bar_model(self, neutral_bar, ids_bar=None, expr_bar=None, w_i=None, w_e=None ):
         v_size, dim = neutral_bar.shape
@@ -525,6 +530,50 @@ class PreProp:
         concat_img = vis.resize_img( concat_img, 1000)
         vis.show("test", concat_img )
 
+
+    def save_png2(self,neutral, identity_m, expr_m, img_list, id_weight, expr_weights, Q_list, Rt_list, lmk_2d_list,lmk_idx_list, root_path, postfix, *index_list, **meta_param):
+        if not osp.exists(root_path):
+            os.makedirs(root_path)
+        iter_str = meta_param.get("iteration","")
+
+        for index in index_list:
+            img = img_list[index]['img_data']
+            name = img_list[index]['name']
+            vv = self.get_combine_model(neutral, identity_m, expr_m, id_weight, expr_weights[index])
+            pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+            # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
+            contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
+            new_contour =  pts2d[contour]
+
+            gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark", radius=1, thickness=1)
+            pred_lmk_img = vis.draw_pts(img, pts2d[lmk_idx_list[index]], color=(0,0,255), width=1000, caption = "Fitting Landmark")
+            pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 1, caption = "Fitting Landmark : iteration : "+iter_str)
+            # new_cont_img = vis.draw_pts(img, new_contour, color=(0,0,255))
+            new_cont_img = vis.draw_contour(img, pts2d, contour, color=(0,0,255), line_color=(0,255,0), caption=" ")
+            gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], width=1000,color=(0,255,255))
+            # mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
+            vis.set_delay(1)
+
+
+            mesh_overlay_image = vis.draw_mesh_to_img(img, Q_list[index], Rt_list[index], vv, self.f, (1.0, 0, 0), width=1000)
+            inner_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
+            self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']+\
+            self.eye['left_eye']['full_index'] + self.eye['right_eye']['full_index']
+
+            #########################################################
+            #draw inner shapes
+            pred_lmk_img = vis.draw_pts_mapping(img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(255,0,0))
+            pred_lmk_img = vis.draw_pts(pred_lmk_img, np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(0,255,255))
+            pred_lmk_img = vis.draw_pts(pred_lmk_img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],color=(0,0,255),width=1000, caption = "Mapping Landmark")
+            # checking cors mapping 
+
+
+            # concat_img = vis.concatenate_img(2,2, pred_pts_img, mesh_contour_img, pred_lmk_img, mesh_overlay_image)
+            concat_img = vis.concatenate_img(2,2, pred_pts_img, gt_lmk_img, pred_lmk_img, mesh_overlay_image)
+            vis.save(osp.join(root_path, name+"_{}".format(postfix)+".png"), concat_img)
+            concat_img = vis.resize_img( concat_img, 1000)
+            vis.show("test", concat_img )
+
     def find_contour(self, lmk2d, proj_3d_v):
         
         mask_indices = [ii for ii in  range(len(proj_3d_v)) if ii not in  self.unconcern_mesh_idx]
@@ -544,7 +593,7 @@ class PreProp:
                 mapper[idx] = ii
                 idx += 1
             
-            
+        
 
         hull = sp.ConvexHull(proj_3d_v, qhull_options="QJ")
         convex_index = hull.vertices
@@ -664,18 +713,8 @@ class PreProp:
                 f_h_val = cost_f(copied_x)
                 gradient = (f_h_val - f_val)/(2*eps)
                 return  gradient
-            def full_grad(x):
-                grad_array = np.zeros_like(x)
-                for i in range(len(x)):
-                    copied_x = np.copy(x)
-                    copied_x -= eps
-                    f_val = cost_f(copied_x)
-                    copied_x += eps
-                    f_h_val = cost_f(copied_x)
-                    gradient = (f_h_val - f_val)/eps*2
-                    grad_array[i, 0 ] = gradient
-                return grad_array.T         
-            return wrapper, full_grad
+                  
+            return wrapper
         
         x = np.copy(init_x)
         grad_history = [np.zeros_like(x) for i in range(iter_nums)]
@@ -701,27 +740,43 @@ class PreProp:
             slide = None
             if camera_refinement_func is not None :
                 slide = -6
-                iteriter  = 5
+                start_iteriter = 5
+                iteriter  = start_iteriter
+                img = np.copy(kwargs.get("img", None))
+                img = vis.resize_img(img, 1000)
+                vis.set_delay(1000)
+                vis.show("Rt fit",img)
                 while iteriter:
-                    if iter_i != 0 :
+                    if iter_i == 0  and iteriter == start_iteriter:
                         
-                        rx, ry, rz, tx, ty, tz = camera_refinement_func(x[:slide], y)
-                        # print(x[slide:, :].reshape(-1))
-                        # print(np.array([rx, ry, rz, tx, ty, tz]).reshape(-1))
-                        x[slide:, :] = np.array([rx, ry, rz, tx, ty, tz]).reshape(-1,1)
-
-                        if contour_mapper_func is not None :
-                            new_lmk_indx = contour_mapper_func(x) # do not modify its values.
-                            new_lmk_idx_history.append(new_lmk_indx)
-                    else:
                         rx, ry, rz, tx, ty, tz = camera_refinement_func(x[:slide], y, True)
                         # print(x[slide:, :].reshape(-1))
                         # print(np.array([rx, ry, rz, tx, ty, tz]).reshape(-1))
                         x[slide:, :] = np.array([rx, ry, rz, tx, ty, tz]).reshape(-1,1)
 
-                        if contour_mapper_func is not None :
-                            new_lmk_indx = contour_mapper_func(x) # do not modify its values.
-                            new_lmk_idx_history.append(new_lmk_indx)
+                        # if contour_mapper_func is not None :
+                        #     new_lmk_indx = contour_mapper_func(x) # do not modify its values.
+                        #     new_lmk_idx_history.append(new_lmk_indx)
+                    else:
+                        rx, ry, rz, tx, ty, tz = camera_refinement_func(x[:slide], y)
+                        # print(x[slide:, :].reshape(-1))
+                        # print(np.array([rx, ry, rz, tx, ty, tz]).reshape(-1))
+                        x[slide:, :] = np.array([rx, ry, rz, tx, ty, tz]).reshape(-1,1)
+
+                    if contour_mapper_func is not None :
+                        new_lmk_indx = contour_mapper_func(x) # do not modify its values.
+                        new_lmk_idx_history.append(new_lmk_indx)
+                    img = kwargs.get("img", None)
+                    mesh = kwargs.get("mesh", None)
+                    Q = mesh.get("Q", None )
+                    neutral = mesh.get("neutral", None)
+                    exprs = mesh.get("exprs", None)
+                    f = mesh.get("f", None)
+                    m_color = mesh.get("color", (0.5, 0, 0))
+                    aaa= x[slide:, :].ravel()
+                    ig = vis.draw_mesh_to_img(img, Q, self.get_Rt(*x[slide:, :].ravel()), self.get_combine_model(neutral, None, exprs, None, x[:slide, :]), f, m_color, 1000, "iter : {}".format(start_iteriter +1 -iteriter))
+                    vis.set_delay(100)
+                    vis.show("Rt fit",ig)
                     iteriter -= 1
             for i in range(len(x[:slide])):
                 xi = x[i, 0]
@@ -729,16 +784,13 @@ class PreProp:
                 sel_ind_cost_f = cost_function_builder(i, x)
                 
                 f_val = sel_ind_cost_f(xi)
-                sel_idx_grad_func, _ = cost_grad_wrapper(i, x)
+                sel_idx_grad_func = cost_grad_wrapper(i, x)
                 
                 coord_grad = sel_idx_grad_func(xi).T
 
-                # opt.minimize(fun=cost_f, x0 = init_x, jac= ,method="BFGS", options=options)
                 res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = w_bounds, options=options)
                 x[i, :] = res.x
 
-                # res = opt.minimize(fun=sel_ind_cost_f, x0 = np.array([[xi]]), jac = sel_idx_grad_func, method="L-BFGS-B", bounds = bounds,options=options)
-                # x = clip_func(x)
 
 
 
@@ -766,6 +818,135 @@ class PreProp:
             # print("iter : ", iter_i, "cost : ", f_val, "\nx", x.ravel())
             print("iter : ", iter_i, "cost : ", f_val, "grad mean : ", np.mean(grad_history[iter_i]))
         return x, grad_history, alpah_history
+
+
+    def find_camera_matrix_Q_by_cv(self, pts3d_list, pts2d_list, size):
+
+            def make_Q(fx, cx, cy):
+                cam = np.identity(3)
+                cam[1,1] = cam[0,0] = fx 
+                cam[0, -1] = cx 
+                cam[1, -1] = cy 
+                return cam
+            
+
+            res_pts3d =pts3d_list
+            res_pts2d = pts2d_list
+            cam = np.identity(3, dtype=np.float32)
+            minimum = 1
+            maximum = 100000
+            start = minimum
+            end = maximum
+            Rt = np.eye(3, 4)
+            stopping_flag = False
+            new_fx = end
+            jump_distance = (end-start)/2
+            
+            def costf(Q, pts3d_list, pts2d_list, width, height):
+                cost_eval = 0
+                for pts3d, pts2d in zip(pts3d_list, pts2d_list):
+                    succ, rvecs, tvecs = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((1,5)))
+                    if succ:
+                        pj_2d, _ = cv2.projectPoints(pts3d, rvec=rvecs, tvec=tvecs, cameraMatrix=Q, distCoeffs=np.zeros((1,5)))
+                        pj_2d = pj_2d.reshape(-1,2)
+                        if np.any( pj_2d[:, 0] > width) or np.any( pj_2d[:, 1] > height) or np.any( pj_2d[:, 0] < 0) or np.any( pj_2d[:, 1] < 0):
+                            return np.inf
+                        res = (pts2d - pj_2d.reshape(-1,2)).reshape(-1,1)
+                        cost_i = (res.T@res)/len(pts3d)
+                        cost_eval = cost_i
+                cost_eval /= len(pts3d_list)
+                return cost_eval.ravel()
+            
+            def cost_checker(start, end, pts3d_list, pts2d_list, eps = 10):
+                import matplotlib.pyplot as plt 
+                fx_start = start 
+                fx_end = end 
+                fx_middle = (end + start)/2
+                fx_left = (start + fx_middle)/2
+                fx_right = (fx_middle + end)/2
+                min_focal = self.convert_focal_length(size[1], size[0], 12)
+                min_focal = 1
+                max_focal = self.convert_focal_length(size[1], size[0], 50)
+
+                # test_list = list(range(start, end, eps))
+                test_list = list(range(int(min_focal), int(max_focal), 1))
+                cost_list = []
+                for fi in (test_list):
+                    Q = make_Q(fi, cx = size[1]/2, cy = size[0]/2)
+                    costv = costf(Q, pts3d_list, pts2d_list, size[1], size[0])
+                    cost_list.append(costv)
+                plt.plot(test_list, cost_list, 'b-')
+                mins = (-1, np.inf)
+                plt.show()
+                for fx, cost in zip(test_list, cost_list):
+                    if cost < mins[-1]:
+                        mins = (fx, cost)
+                
+                if mins[0] == -1:
+                    print("error")
+                return mins[0], mins[1]
+                sQ = make_Q(fx= fx_start,cx = size[1]/2, cy = size[0]/2)
+                eQ = make_Q(fx= fx_end,cx = size[1]/2, cy = size[0]/2)
+
+                mQ = make_Q(fx= fx_middle,cx = size[1]/2, cy = size[0]/2)
+                lQ = make_Q(fx= fx_left, cx = size[1]/2, cy = size[0]/2)
+                rQ = make_Q(fx= fx_right,cx = size[1]/2, cy = size[0]/2)
+                m_cost = cost(mQ, pts3d_list, pts2d_list, size[1], size[0])
+                s_cost = cost(sQ, pts3d_list, pts2d_list, size[1], size[0])
+                e_cost = cost(eQ, pts3d_list, pts2d_list, size[1], size[0])
+                # if s_cost < m_cost or m_cost > e_cost:
+                #     return np.inf  
+                
+                
+                if abs(end - start) <= eps:
+                    return (mQ, m_cost)
+                
+                r_cost = cost(rQ, pts3d_list, pts2d_list, size[1], size[0])
+                l_cost = cost(lQ, pts3d_list, pts2d_list, size[1], size[0])
+
+                if l_cost < r_cost :
+                    return cost_checker(start, fx_right, pts3d_list, pts2d_list)
+                else :
+                    return cost_checker(fx_left, end, pts3d_list, pts2d_list)
+
+                if l_cost < r_cost:
+                    if m_cost < l_cost:
+                        return cost_checker(fx_left, fx_right, pts3d_list, pts2d_list)
+                    else :
+                        return cost_checker(start, fx_right, pts3d_list, pts2d_list)
+                        
+                elif r_cost < l_cost: # r cost is lower than l_cost 
+                    if m_cost < r_cost :
+                        return cost_checker(fx_left, fx_right, pts3d_list, pts2d_list)
+                    else:
+                        return cost_checker(fx_left, end, pts3d_list, pts2d_list)
+                # else : # if np.inf all of l_cost r_cost
+                #     return cost_checker(start, fx_middle, pts3d_list, pts2d_list)
+
+
+                
+            Q, _ = cost_checker(1, maximum, res_pts3d, res_pts2d)
+            return make_Q(Q, cx = size[1]/2, cy = size[0]/2)
+
+    def find_camera_parameter_by_cv2(self, pts3d : np.ndarray,  pts2d : np.ndarray, guessed_Q = None , init_Rt = None):
+        """
+            pts2d
+            pts3d 
+            size tuple
+
+        """
+        
+        if init_Rt is not None : 
+            rvec = np.array(self.decompose_Rt(init_Rt))
+            tvec = init_Rt[:, -1, np.newaxis]
+
+            succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix= guessed_Q, distCoeffs=np.zeros((4), dtype=np.float32), rvec=rvec, tvec=tvec, useExtrinsicGuess=True)
+        else :
+            succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=guessed_Q, distCoeffs=np.zeros((4), dtype=np.float32))
+        res = np.zeros((3,4))
+        res[:, :-1] = cv2.Rodrigues(rvec)[0]
+        res[:, -1] = tvec.ravel()
+        return res
 
     def find_camera_matrix(self, x_3d, x_2d, guessed_projection_Qmat = None):
         # P_{0} @ X - 
@@ -875,8 +1056,125 @@ class PreProp:
             # print(K@Rt)
 
         return Q, Rt
+    
+    def find_camera_matrix_from_multiple_images(self, x_3d_list, x_2d_list, guessed_projection_Qmat = None):
+        # P_{0} @ X - 
+        # 12 unknown
+        """
+            camera matrix P
+            [p1 p2  p3  p4 ]   [-p1-]
+            [p5 p6  p7  p8 ] = [-p2-]
+            [p9 p10 p11 p12]   [-p3-]
+            see detail : https://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
+        """
+
+        def to_homogeneous(x):
+            return np.concatenate([x, np.ones((len(x),1))], axis = -1)
+
+        def add_coeff_to_A(mat, x_3d, x_2d, idx):
+            r, c = mat.shape
+            X = x_3d[idx, :]
+            pts_2d = x_2d[idx, :]
+            x, y = pts_2d.ravel()
+            mat[idx*2, :4] = X
+            mat[idx*2+1, 4:8] = X
+            mat[idx*2, -4: ] = -x * X
+            mat[idx*2+1, -4: ] = -y * X
+        # setup matrix A
+        num_imgs =len(x_3d_list)
+        v_size, dim = x_3d_list[0].shape
+        
+        mat = np.zeros((2*num_imgs*v_size, 12))
+        for list_idx in range(len(x_3d_list)):
+            b_mat = mat[:(list_idx+1)*2*v_size, :]
+            x_3d = to_homogeneous(x_3d_list[list_idx])
+            for v_idx in range( len( x_3d ) ):
+                add_coeff_to_A(b_mat, x_3d, x_2d_list[list_idx], v_idx)
+        mat = mat.T @mat
+        u, s, vT = np.linalg.svd(mat)
+        sol = vT[-1, :]
+        
+        
+        # cam mat
+        mat_P = sol.reshape(3, 4)
+        
+        # xxx = x_3d
+        # xx = mat_P @ xxx.T
+        # xx2 = xx/xx[-1,  :]
+        # x2 = x_2d
+
+
+        if guessed_projection_Qmat is not None :
+            # if we know Q
+            Q = guessed_projection_Qmat
+            Qinv = np.linalg.inv(Q)
+            Rt = Qinv@mat_P
+            
+        else:
+            # if we don't knonw
+            u,s, vT = np.linalg.svd(mat_P)
+                    
+            c = vT[-1, :] 
+            # c[:] /= c[-1]
+            # c = c[:-1] #remove hormogeneous to 3d pts
+
+            M = mat_P[:3,:3]
+            K, R = scipy.linalg.rq(M)
+            testK1 = K
+            testR1 = R
+            Q = K
+            Q/=K[-1,-1]
+            
+            # U, S, Vt = np.linalg.svd(M)
+            # R = np.dot(Vt.T,U.T)
+            
+            # # special reflection case
+            # eye = np.eye(3, dtype=np.float32)
+            # d = np.linalg.det(R)
+            # if d < 0:
+            #     print("Reflection detected")
+            # eye[2,2]= d
+            # R = np.dot(np.dot(Vt.T, eye),U.T)
+            # K = M@R.T
+
+            #solve flip problem
+            if Q[0,0] < 0:
+                Q[0,0] *= -1
+                R[0, :] *= -1
+            if Q[1,1] < 0:
+                Q[1,1] *= -1
+                R[1, :] *= -1
+            if Q[-1,-1] < 0:
+                Q[:,-1]*=-1
+                R[-1, :] *= -1
+            
+        #     # [R, -Rc]
+        #     # Rt = np.concatenate([R, -R@c.reshape(-1,1)], axis = -1)
+        #     RR = np.identity(4)
+        #     RR[:3,:3] = R
+        #     Mc = RR@c.reshape(-1,1)
+        #     Mc[:,:] /= Mc[-1, :]
+        #     Mc = Mc[:-1, :]
+        #     Rt = np.concatenate([R, -Mc], axis = -1)
+        # print("gen P : \n", Q@Rt, "\norig : \n",mat_P)
+        # test =Q@Rt
+
+
+            c = vT[-1, :] 
+            c[:] /= c[-1]
+            c = c[:-1] #remove hormogeneous to 3d pts
+            Q = K
+            Rt= np.concatenate([R, -R@c.reshape(-1,1)], axis=-1)
+            # print("====")
+            # print(mat_P)
+            # print(K@Rt)
+
+        return Q, Rt
 
     def coordinate_descent(self, cost_function, init_x, y, iter_nums, eps = 10e-7, clip_func = None ):
+        """
+            simple gradient base coordinate descent method.
+        """
         if len(init_x.shape) == 1 : 
             init_x = init_x.reshape(-1, 1)
 
@@ -914,6 +1212,7 @@ class PreProp:
         grad_history = [np.zeros_like(x) for i in range(iter_nums)]
         alpah_history = [np.zeros_like(x) for i in range(iter_nums)]
         prev_f_val = 9999999999999
+
         for iter_i in range(iter_nums):
             
             
@@ -937,7 +1236,7 @@ class PreProp:
                 x -= coord_grad*alpha
                 x = clip_func(x)
             
-            if abs(f_val - prev_f_val) < 10:
+            if abs(f_val - prev_f_val) < 10 and f_val <= prev_f_val:
             # if np.all( np.abs(grad_history[iter_i]) < 10e-7, axis=0):
                 print("stopped at iteration : ", iter_i, ". all gradient is closed to zero, stop optimizing.")
                 break
@@ -945,6 +1244,8 @@ class PreProp:
             # print("iter : ", iter_i, "cost : ", f_val, "\nx", x.ravel())
             print("iter : ", iter_i, "cost : ", f_val, "grad mean : ", np.mean(grad_history[iter_i]))
         return x, grad_history, alpah_history
+    
+    
     
     # def shape_fit(self, lmks_2d, images, id_meshes, expr_meshes, lmk_idx):
     def shape_fit(self, id_meshes, expr_meshes, lmk_idx, force_recalcutaion = False):
@@ -962,7 +1263,7 @@ class PreProp:
             if osp.exists("./cd_test/identity_weight.txt.npy"):
                 return 
 
-
+        
         self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
         self.contour_pts_idx = np.load("./contour_pts.npy")
         lmk_idx = np.array(lmk_idx)
@@ -979,472 +1280,26 @@ class PreProp:
 
         expr_meshes = np.array(expr_meshes)
         expr = expr_meshes - np.expand_dims(neutral, axis=0)
-        # expr_bar = expr[..., lmk_idx, :]
         expr_num, _,_ = expr.shape
 
 
-        
-        inner_face_lmk_idx = self.mouse, self.eyebrow, self.nose, self.eye
-        inner_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
+        inner_full_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
             self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']+\
             self.eye['left_eye']['full_index'] + self.eye['right_eye']['full_index']
-        # lmks_2d = np.array(lmks_2d)
-
-        # def get_combine_bar_model( w_i, w_e):
-            # nonlocal neutral_bar, expr_bar, ids_bar
-        def get_combine_bar_model(neutral_bar,ids_bar, expr_bar, w_i, w_e):
-            expr_num, expr_v_size, expr_dim = expr_bar.shape
-            id_num, id_v_size, id_dim = ids_bar.shape 
-
-            reshaped_expr = expr_bar.reshape(expr_num, expr_v_size*expr_dim).T
-            reshaped_id = ids_bar.reshape(id_num, id_v_size*id_dim).T
-            res = reshaped_id@w_i.reshape(-1,1) + reshaped_expr@w_e.reshape(-1,1)
-            # res = res.reshape(id_dim, id_v_size).T
-            res = res.reshape(id_v_size, id_dim)
-            return neutral_bar + res
-        def get_combine_model(w_i, w_e):
-            nonlocal neutral, expr, ids
-            expr_num, expr_v_size, expr_dim = expr.shape
-            new_exps = expr.reshape(expr_num, expr_v_size*expr_dim ).T
-            id_num, id_v_size, id_dim = ids.shape 
-            new_ids = ids.reshape(id_num, id_v_size*id_dim).T
-            # exp_res =  new_exps@w_e
-            # exp_res = exp_res.T.reshape(c,d)
-            # id_res = new_ids@w_i
-            # id_res = id_res.T.reshape(g,h)
-            res = new_ids@w_i + new_exps@w_e
-            res = res.reshape(id_v_size, id_dim)
-            return neutral + res
-        
-        def get_bars(neutral, ids, exprs, sel_lmk_idx):
-            neutral_bar = neutral[sel_lmk_idx, :]
-            ids_bar = ids[:, sel_lmk_idx, :]
-            expr_bar = exprs[:, sel_lmk_idx, :]
-            return neutral_bar, ids_bar, expr_bar
-                    
-        
-        
-                
-        def get_Rt(theta_x, theta_y, theta_z, tx, ty, tz):
-            Rx = np.eye(3,3)
-            Ry = np.eye(3,3)
-            Rz = np.eye(3,3)
-
-            Rx[1,1] = np.cos(theta_x); Rx[1,2] = -np.sin(theta_x)
-            Rx[2,1] = np.sin(theta_x); Rx[2,2] = np.cos(theta_x)
-
-            Ry[0,0] = np.cos(theta_y); Ry[0,2] = np.sin(theta_y)
-            Ry[2,0] = -np.sin(theta_y); Ry[2,2] = np.cos(theta_y)
+        inner_face_lmk_idx = self.eyebrow['left_eyebrow']['full_index'] + \
+            self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']
             
-            Rz[0,0] = np.cos(theta_z); Rz[0,1] = -np.sin(theta_z)
-            Rz[1,0] = np.sin(theta_z); Rz[1,1] = np.cos(theta_z)
-
-            res = np.zeros((3,4))
-
-            res[:, -1] = np.array([tx, ty, tz])
-            res[:3, :3] =Rz@Ry@Rx
-
-            return res
-        
-
-        def decompose_Rt(Rt):
-            """
-            input : 
-                Z,y,x sequentially
-            return 
-                x, y, z angle
-            see also https://en.wikipedia.org/wiki/Rotation_matrix
-            """
-            y_angle = np.arctan2(-1*Rt[2,0],np.sqrt(Rt[0,0]**2+Rt[1,0]**2))
-            x_angle = np.arctan2(Rt[2,1]/np.cos(y_angle),Rt[2,2]/np.cos(y_angle))
-            z_angle = np.arctan2(Rt[1,0]/np.cos(y_angle),Rt[0,0]/np.cos(y_angle))
-
-
-            return x_angle, y_angle, z_angle
-            
-        def add_Rt_to_pts(Q, Rt, x):
-            R = Rt[:3,:3]
-            t = Rt[:, -1, None]
-            xt = x.T
-            Rx = R @ xt 
-            Rxt = Rx+t
-            pj_Rxt = Q @ Rxt
-            res = pj_Rxt/pj_Rxt[-1, :]
-            return res[:2, :].T
-            
-
-        def id_weight_function(fixed_Q, fixed_Rt, nuetral_bar, ids_bar, exprs_bar, expr_weight_list, x, y):
-            
-            total_z = 0
-            for w_e in expr_weight_list:
-                verts3d = get_combine_bar_model(nuetral_bar, ids_bar, exprs_bar, x, w_e)
-                vers_2d = add_Rt_to_pts(fixed_Q, fixed_Rt, verts3d)  
-                z = vers_2d - y              
-                z = z.reshape(-1,1)
-                z = z.T@z 
-                total_z += z 
-            return total_z 
 
         def default_cost_function(Q, Rt, neutral_bar, ids_bar, exprs_bar, id_weight, expr_weight, y):
             # x := Q + Rt + expr weight
 
-            blended_pose = get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, expr_weight)
+            blended_pose = self.get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, expr_weight)
             
-            gen = add_Rt_to_pts(Q, Rt, blended_pose)
+            gen = self.add_Rt_to_pts(Q, Rt, blended_pose)
             z = gen - y
             new_z = z.reshape(-1, 1)
             new_z = new_z.T @ new_z
             return new_z
-
-        # def default_cost_function(Q, Rt, neutral_bar, ids_bar, exprs_bar, id_weight, expr_weight, y):
-            # Q @ neutral_bar
-        def expr_cost_function(Q, neutral_bar, ids_bar, exprs_bar, id_weight, x, y):
-            # x := Q + Rt + expr weight
-            r1, r2, r3, tx,ty, tz = x.ravel()[:6]
-            
-            pose_weight = x[6:, 0]
-
-            Rt = get_Rt(r1,r2,r3, tx,ty,tz)
-            blended_pose = get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, pose_weight)
-
-            gen = add_Rt_to_pts(Q, Rt, blended_pose)
-            z = gen - y
-            new_z = z.reshape(-1, 1)
-            new_z = new_z.T @ new_z
-            return new_z
-
-        def find_camera_matrix(x_3d, x_2d, guessed_projection_Qmat = None):
-            # P_{0} @ X - 
-            # 12 unknown
-            """
-                camera matrix P
-                [p1 p2  p3  p4 ]   [-p1-]
-                [p5 p6  p7  p8 ] = [-p2-]
-                [p9 p10 p11 p12]   [-p3-]
-                see detail : https://www.cs.cmu.edu/~16385/s17/Slides/11.3_Pose_Estimation.pdf
-            """
-
-            def to_homogeneous(x):
-                return np.concatenate([x, np.ones((len(x),1))], axis = -1)
-
-            def add_coeff_to_A(mat, x_3d, x_2d, idx):
-                r, c = mat.shape
-                X = x_3d[idx, :]
-                pts_2d = x_2d[idx, :]
-                x, y = pts_2d.ravel()
-                mat[idx*2, :4] = X
-                mat[idx*2+1, 4:8] = X
-                mat[idx*2, -4: ] = -x * X
-                mat[idx*2+1, -4: ] = -y * X
-            x_3d = to_homogeneous(x_3d)
-            # setup matrix A
-            mat = np.zeros((2*len(x_3d), 12))
-            for idx in range(len(x_3d)):
-                add_coeff_to_A(mat, x_3d, x_2d, idx)
-            mat = mat.T @mat
-            u, s, vT = np.linalg.svd(mat)
-            sol = vT[-1, :]
-            
-            
-            # cam mat
-            mat_P = sol.reshape(3, 4)
-            
-            xxx = x_3d
-            xx = mat_P @ xxx.T
-            xx2 = xx/xx[-1,  :]
-            x2 = x_2d
-
-
-            if guessed_projection_Qmat is not None :
-                # if we know Q
-                Q = guessed_projection_Qmat
-                Qinv = np.linalg.inv(Q)
-                Rt = Qinv@mat_P
-                
-            else:
-                # if we don't knonw
-                u,s, vT = np.linalg.svd(mat_P)
-                        
-                c = vT[-1, :] 
-                # c[:] /= c[-1]
-                # c = c[:-1] #remove hormogeneous to 3d pts
-
-                M = mat_P[:3,:3]
-                K, R = scipy.linalg.rq(M)
-                testK1 = K
-                testR1 = R
-                Q = K
-                Q/=K[-1,-1]
-                
-                # U, S, Vt = np.linalg.svd(M)
-                # R = np.dot(Vt.T,U.T)
-                
-                # # special reflection case
-                # eye = np.eye(3, dtype=np.float32)
-                # d = np.linalg.det(R)
-                # if d < 0:
-                #     print("Reflection detected")
-                # eye[2,2]= d
-                # R = np.dot(np.dot(Vt.T, eye),U.T)
-                # K = M@R.T
-
-                #solve flip problem
-                if Q[0,0] < 0:
-                    Q[0,0] *= -1
-                    R[0, :] *= -1
-                if Q[1,1] < 0:
-                    Q[1,1] *= -1
-                    R[1, :] *= -1
-                if Q[-1,-1] < 0:
-                    Q[:,-1]*=-1
-                    R[-1, :] *= -1
-                
-            #     # [R, -Rc]
-            #     # Rt = np.concatenate([R, -R@c.reshape(-1,1)], axis = -1)
-            #     RR = np.identity(4)
-            #     RR[:3,:3] = R
-            #     Mc = RR@c.reshape(-1,1)
-            #     Mc[:,:] /= Mc[-1, :]
-            #     Mc = Mc[:-1, :]
-            #     Rt = np.concatenate([R, -Mc], axis = -1)
-            # print("gen P : \n", Q@Rt, "\norig : \n",mat_P)
-            # test =Q@Rt
-
-
-            c = vT[-1, :] 
-            c[:] /= c[-1]
-            c = c[:-1] #remove hormogeneous to 3d pts
-            Q = K
-            Rt= np.concatenate([R, -R@c.reshape(-1,1)], axis=-1)
-            # print("====")
-            # print(mat_P)
-            # print(K@Rt)
-
-            return Q, Rt
-
-
-        def coordinate_descent(cost_function, init_x, y, iter_nums, eps = 10e-7, clip_func = None ):
-            if len(init_x.shape) == 1 : 
-                init_x = init_x.reshape(-1, 1)
-
-            def cost_f(x):
-                return cost_function(x, y)
-            
-            def cost_grad_wrapper(ind):
-                def wrapper(x):
-                    copied_x = np.copy(x)
-                    copied_x[ind, 0] -= eps
-                    f_val = cost_f(copied_x)
-                    copied_x = np.copy(x)
-                    copied_x[ind, 0] += eps
-                    # copied_x[ind, 0] += 2*eps
-                    f_h_val = cost_f(copied_x)
-                    gradient = (f_h_val - f_val)/(2*eps)
-                    gradient_array = np.zeros_like(x)
-                    gradient_array[ind, 0 ] = gradient
-
-                    return gradient_array.T         
-                def full_grad(x):
-                    grad_array = np.zeros_like(x)
-                    for i in range(len(x)):
-                        copied_x = np.copy(x)
-                        copied_x -= eps
-                        f_val = cost_f(copied_x)
-                        copied_x[i, 0] += eps
-                        f_h_val = cost_f(copied_x)
-                        gradient = (f_h_val - f_val)/eps*2
-                        grad_array[i, 0 ] = gradient
-                    return grad_array.T         
-                return wrapper, full_grad
-            
-            x = np.copy(init_x)
-            grad_history = [np.zeros_like(x) for i in range(iter_nums)]
-            alpah_history = [np.zeros_like(x) for i in range(iter_nums)]
-            prev_f_val = 9999999999999
-            for iter_i in range(iter_nums):
-                
-                
-
-                for i in range(len(x)):
-                    f_val = cost_f(x)
-                    sel_idx_grad_func, _ = cost_grad_wrapper(i)
-                    coord_grad = sel_idx_grad_func(x).T
-
-                    grad_history[iter_i][i, :] = coord_grad[i, :]
-                    re = opt.line_search(cost_f, sel_idx_grad_func, x, -coord_grad)
-                    alpha = re[0]
-                    # for safety. when we put too small, and opposite gradient direction into line_search, function will return None,
-                    # this if prevent too small gradient.
-                    
-
-
-                    if alpha is None : 
-                        alpha = 0
-                    alpah_history[iter_i][i, :] = alpha
-                    x -= coord_grad*alpha
-                    x = clip_func(x)
-                
-                if abs(f_val - prev_f_val) < 10:
-                # if np.all( np.abs(grad_history[iter_i]) < 10e-7, axis=0):
-                    print("stopped at iteration : ", iter_i, ". all gradient is closed to zero, stop optimizing.")
-                    break
-                prev_f_val = f_val
-                # print("iter : ", iter_i, "cost : ", f_val, "\nx", x.ravel())
-                print("iter : ", iter_i, "cost : ", f_val, "grad mean : ", np.mean(grad_history[iter_i]))
-            return x, grad_history, alpah_history
-        
-        
-        
-        def grad_descent(cost_function, init_x, y, iter_nums, eps = 10e-7):
-            if len(init_x.shape) == 1 : 
-                init_x = init_x.reshape(-1, 1)
-
-            def cost_f(x):
-                return cost_function(x, y)
-            
-            def cost_grad_wrapper(ind):
-                def wrapper(x):
-                    copied_x = np.copy(x)
-                    copied_x[ind, 0] -= eps
-                    f_val = cost_f(copied_x)
-                    copied_x[ind, 0] += 2*eps
-                    f_h_val = cost_f(copied_x)
-                    gradient = (f_h_val - f_val)/(2*eps)
-                    gradient_array = np.zeros_like(x)
-                    gradient_array[ind, 0 ] = gradient
-
-                    return gradient_array.T         
-                def full_grad(x):
-                    grad_array = np.zeros_like(x)
-                    for i in range(len(x)):
-                        copied_x = np.copy(x)
-                        copied_x -= eps
-                        f_val = cost_f(copied_x)
-                        copied_x[i, 0] += eps
-                        f_h_val = cost_f(copied_x)
-                        gradient = (f_h_val - f_val)/eps*2
-                        grad_array[i, 0 ] = gradient
-                    return grad_array.T         
-                return wrapper, full_grad
-            x = np.copy(init_x)
-            for i in range(30):
-                f_val = cost_f(x)
-                # x[i, 0] += eps
-                sel_idx_grad_func, full_gradient_func = cost_grad_wrapper(i)
-                coord_grad = sel_idx_grad_func(x).T
-                gradient_direction = full_gradient_func(x).T
-
-                re = opt.line_search(cost_f, full_gradient_func, x, -gradient_direction)
-                alpha = re[0]
-                # for safety. when we put too small, and opposite gradient direction into line_search, function will return None,
-                # this if prevent too small gradient.
-                
-                if alpha is None : 
-                    alpha = 0.000001
-                
-                x -= gradient_direction*alpha
-                x = np.clip(x, 0.0, None)
-                # x[6:,0] = np.clip(x[6:, 0], 0.0, 1.0)
-                # if i in [0,1,2]:
-                #     x[i] %= np.pi*2
-            print("cost : ", f_val, "\nx", x.ravel(), "\n alpha : ", alpha, "\ngrad : ", gradient_direction)
-            return x
-
-        def bfgs_method(cost_function, init_x, y, iter_nums, eps = 10e-7):
-            if len(init_x.shape) == 1 : 
-                init_x = init_x.reshape(-1, 1)
-
-            def cost_f(x):
-                x = x.reshape(-1,1)
-                return cost_function(x, y)
-            
-            def cost_grad_wrapper(ind):
-                def wrapper(x):
-                    copied_x = np.copy(x)
-                    copied_x[ind, 0] -= eps
-                    f_val = cost_f(copied_x)
-                    copied_x[ind, 0] += 2*eps
-                    f_h_val = cost_f(copied_x)
-                    gradient = (f_h_val - f_val)/(2*eps)
-                    gradient_array = np.zeros_like(x)
-                    gradient_array[ind, 0 ] = gradient
-
-                    return gradient_array.T         
-                def full_grad(x):
-                    grad_array = np.zeros_like(x).reshape(-1,1)
-                    for i in range(len(x)):
-                        copied_x = np.copy(x)
-                        copied_x = copied_x.reshape(-1,1)
-                        copied_x -= eps
-                        f_val = cost_f(copied_x)
-                        copied_x[i, 0] += eps
-                        f_h_val = cost_f(copied_x)
-                        gradient = (f_h_val - f_val)/eps*2
-                        grad_array[i, 0 ] = gradient
-                    return grad_array.reshape(-1)        
-                return wrapper, full_grad
-            x = np.copy(init_x)
-            import scipy.optimize as opt 
-
-            sel_idx_grad_func, full_gradient_func = cost_grad_wrapper(0)
-            res = opt.minimize(cost_f, init_x, method="BFGS", jac=full_gradient_func, bounds=(-1,1), options={'maxiter':100})
-            print(res.x)
-            print(res.message)
-            return res.x.reshape(-1,1)
-        
-
-
-        def find_contour(lmk2d, proj_3d_v):
-            return self.find_contour(lmk2d, proj_3d_v)
-            hull = sp.ConvexHull(proj_3d_v)
-            convex_index = hull.vertices
-            kd = sp.cKDTree(proj_3d_v[convex_index, :])
-            d, idx = kd.query(lmk2d)
-            return convex_index[idx]
-
-
-        def save_png(root_path, postfix, *index_list, **meta_param):
-            if not osp.exists(root_path):
-                os.makedirs(root_path)
-            iter_str = meta_param.get("iteration","")
-
-            for index in index_list:
-                img = self.img_list[index]['img_data']
-                name = self.img_list[index]['name']
-                vv = get_combine_model(id_weight, expr_weights[index])
-                pts2d = add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
-                # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
-                contour = find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
-                new_contour =  pts2d[contour]
-
-                gt_lmk_img = vis.draw_pts(img, np.array(lmk_2d_list[index]), color=(0,0,255), width=1000, caption = "Ground Truth Landmark", radius=1, thickness=1)
-                pred_lmk_img = vis.draw_pts(img, pts2d[lmk_idx_list[index]], color=(0,0,255), width=1000, caption = "Fitting Landmark")
-                pred_pts_img = vis.draw_pts(img, pts2d, color=(0,0,255), width = 1000, radius = 1, caption = "Fitting Landmark : iteration : "+iter_str)
-                # new_cont_img = vis.draw_pts(img, new_contour, color=(0,0,255))
-                new_cont_img = vis.draw_contour(img, pts2d, contour, color=(0,0,255), line_color=(0,255,0), caption=" ")
-                gt_lmk_img = vis.draw_pts(new_cont_img, np.array(lmk_2d_list[index])[self.contour['full_index']], width=1000,color=(0,255,255))
-                # mesh_contour_img = vis.draw_contour(gt_lmk_img, pts2d, self.mesh_boundary_index, color=(255,0,0), width =1000, caption = "Contour Landmark Selection based on Covexhull")
-                vis.set_delay(1)
-
-
-                mesh_overlay_image = vis.draw_mesh_to_img(img, Q_list[index], Rt_list[index], vv, self.f, (1.0, 0, 0), width=1000)
-                
-
-                #########################################################
-                #draw inner shapes
-                pred_lmk_img = vis.draw_pts_mapping(img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(255,0,0))
-                pred_lmk_img = vis.draw_pts(pred_lmk_img, np.array(lmk_2d_list[index])[inner_face_lmk_idx], color=(0,255,255))
-                pred_lmk_img = vis.draw_pts(pred_lmk_img, pts2d[np.array(lmk_idx_list[index])[inner_face_lmk_idx]],color=(0,0,255),width=1000, caption = "Mapping Landmark")
-                # checking cors mapping 
-
-
-                # concat_img = vis.concatenate_img(2,2, pred_pts_img, mesh_contour_img, pred_lmk_img, mesh_overlay_image)
-                concat_img = vis.concatenate_img(2,2, pred_pts_img, gt_lmk_img, pred_lmk_img, mesh_overlay_image)
-                vis.save(osp.join(root_path, name+"_{}".format(postfix)+".png"), concat_img)
-                concat_img = vis.resize_img( concat_img, 1000)
-                vis.show("test", concat_img )
-
-                    
 
         iter_num = 3 
         # expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_and_info.keys()))]
@@ -1452,8 +1307,41 @@ class PreProp:
         id_weight = np.zeros((id_num, 1))
         time_t = True
         Q_list = [[] for _ in range(len(self.img_list))]
-        Rt_list = [[] for _ in range(len(self.img_list))]
+        Rt_list = [np.eye(3,4) for _ in range(len(self.img_list))]
         lmk_2d_list = [ info['lmk_data'] for info in self.img_list ]
+        
+
+        camera_instrinsic_data_lmk=[]
+        camera_instrinsic_data_pts=[]
+        lmk_idx = lmk_idx_list[0]
+        (h, w, _) = self.img_list[0]['img_data'].shape
+        b_neutral,_,_ = self.get_bars(neutral, ids, expr, lmk_idx)
+        for item in self.neutral_list:
+            camera_instrinsic_data_lmk.append(item['lmk_data'])
+            camera_instrinsic_data_pts.append(b_neutral)
+        test_Q = self.find_camera_matrix_Q_by_cv(np.array(camera_instrinsic_data_pts, dtype=np.float32), 
+                                            np.array(camera_instrinsic_data_lmk, dtype=np.float32), (h,w))
+        
+        inner_face_lmk_idx = self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal'] + self.eyebrow['left_eyebrow']['full_index']
+        for ci in range(len(camera_instrinsic_data_pts)):
+            # Q, _ = self.find_camera_matrix(x_3d=camera_instrinsic_data_pts[0],x_2d=np.array(camera_instrinsic_data_lmk)[0])
+            Q_list[ci], Rt_list[ci]= self.find_camera_matrix(camera_instrinsic_data_pts[ci][inner_face_lmk_idx, :], np.array(camera_instrinsic_data_lmk[ci])[inner_face_lmk_idx, :])
+        
+        test_Q = np.array([[2.29360512e+03, 0.00000000e+00, 2.61489110e+03],
+        [0.00000000e+00, 2.29936264e+03, 1.94713585e+03],
+        [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]], dtype=np.float32)
+        for iii in range(len(Q_list)):
+            Q_list[iii] = test_Q
+        
+        # Q = np.zeros_like(Q_list[0])
+        # for Qi in Q_list:
+        #     Q+=Qi
+        # Q = Q/len(Q_list)
+        # for Qi in range(len(Q_list)):
+        #     Q_list[Qi] = Q
+        # Q, _ = self.find_camera_matrix_from_multiple_images(np.array(camera_instrinsic_data_pts), np.array(camera_instrinsic_data_lmk))
+
+
         
         for iter_i in tqdm.tqdm(range(iter_num)):
             # expr_weights = [np.zeros((expr_num, 1)) for _ in range(len(self.img_list))]
@@ -1463,80 +1351,62 @@ class PreProp:
                 lmk_2ds = np.array([info['lmk_data'] for info in item ])
                 index_list =  [ info['index'] for info in item ]
                 sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
-
+                sel_full_faces = [self.get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
+                sel_faces = [[fn[inner_full_face_lmk_idx], fi[:, inner_full_face_lmk_idx, :], fe[:, inner_full_face_lmk_idx, :]] for fn,fi,fe in sel_full_faces]
+                
+                
                 # nuetral, ids, exprs
+                for idxx, index in enumerate(index_list):
+                    camera_find_inter_start = 5
+                    camera_find_iter = camera_find_inter_start
+                    
+                    while camera_find_iter:
+                        sel_lmk_idx = lmk_idx_list[index]
+                        img = sel_imgs[idxx]
+                        vv = self.get_combine_model(neutral, ids, expr, id_weight, expr_weights[index])
+                        pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+                        contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
+
+                        for con_i, idx in enumerate(self.contour['full_index']):
+                            sel_lmk_idx[idx] = contour[con_i]
+
+                        idx_list = sel_lmk_idx_list[idxx]
+                        face = sel_full_faces[idxx]
+                        lmk_2d = lmk_2ds[idxx]
+                        if camera_find_iter == camera_find_inter_start and iter_i == 0:
+                            # raw_Rt_list = self.find_camera_matrix( 
+                                                        # self.get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index])[inner_face_lmk_idx],
+                                                        # np.array(lmk_2d)[inner_face_lmk_idx]) 
+                            raw_Rt_list = self.find_camera_parameter_by_cv2(self.get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index])[inner_face_lmk_idx], np.array(lmk_2d)[inner_face_lmk_idx], guessed_Q=Q_list[index]) 
+                        else:
+                            raw_Rt_list = self.find_camera_matrix( 
+                                                        self.get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]),
+                                                        np.array(lmk_2d)) 
+                            raw_Rt_list = self.find_camera_parameter_by_cv2(self.get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]), np.array(lmk_2d), guessed_Q= Q_list[index]) 
+                        
+
+
+                        # Q, Rt = raw_Rt_list
+                        # Q_list[index] = Q
+                        Rt_list[index] = raw_Rt_list
+                        sel_lmk_idx = lmk_idx_list[index]
+                        vv = self.get_combine_model(neutral, ids, expr, id_weight, expr_weights[index])
+                        pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+                        contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
+
+                        for con_i, idx in enumerate(self.contour['full_index']):
+                            sel_lmk_idx[idx] = contour[con_i]
+                        
+                        img_s = vis.draw_mesh_to_img(img=img, Q = Q_list[index], Rt= Rt_list[index], v = vv, f=self.f, color =(0,0,1), width=1000, caption="image index : {} QRt iter : {}".format(index, (camera_find_inter_start - camera_find_iter + 1)))
+                        vis.set_delay(100)
+                        vis.show("test", img_s)
+                        camera_find_iter-=1    
+                        
                 
-                if iter_i == 0 : # if first iteration, we only compute with inner lmk.
-                    # inner_sel_lmk_idx_list = [[lmk_idx_list[idx] for idx in inner_face_lmk_idx] for lmk_idx_list in sel_lmk_idx_list]
-                    # sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in inner_sel_lmk_idx_list]
-                    # raw_Q_Rt_list = [find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d[inner_face_lmk_idx], None) \
-                    #                  for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
-                    sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
-                    raw_Q_Rt_list = [ find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) \
-                                     for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
-                    for i, ind in enumerate(index_list):
-                        Q, Rt = raw_Q_Rt_list[i]
-                        Q_list[ind] = Q
-                        Rt_list[ind] = Rt
-                else:
-                    sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
-                    raw_Q_Rt_list = [ find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) \
-                                    for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
-                    for i, ind in enumerate(index_list):
-                        Q, Rt = raw_Q_Rt_list[i]
-                        Q_list[ind] = Q
-                        Rt_list[ind] = Rt
-                    # expr_Q_list = [ Q for Q, _ in raw_Q_Rt_list]
-                    # expr_Rt_list = [ Rt for _, Rt in raw_Q_Rt_list ] 
-                # else:
-                    # sel_faces = [get_bars(neutral, ids, expr, idx_list) for idx_list in sel_lmk_idx_list]
-                    # raw_Q_Rt_list = [ find_camera_matrix( get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index]) ,lmk_2d, None) \
-                                    #  for index, face, lmk_2d in zip(index_list, sel_faces, lmk_2ds) ]
-                # expr_Q_list = [ Q for Q, _ in raw_Q_Rt_list]
-                # expr_Rt_list = [ Rt for _, Rt in raw_Q_Rt_list ] 
-                
-                def exp_cost_builder(Q, neutral, ids, exps):
-                    def wrapper(x,y):
-                        w = x[-6:, 0]
-                        Rt = get_Rt(*w.ravel())
-                        weight_norm = w.T@w
-                        id_weight = x[:len(ids), :]
-                        expr_weight = x[len(ids):-6, :]
-
-                        face_weight = x[6:, :]
-                        face_weight_norm = face_weight.T @ face_weight
-
-                        return default_cost_function(Q, Rt, neutral, ids, exps, id_weight, expr_weight, y )# + face_weight_norm 
-
-                    return wrapper
-                def exp_cost_builder2(Q, Rt, neutral, ids, exps):
+                def exp_cost_builder(Q, Rt, neutral, ids, exps):
                     def wrapper(x,y):
                         id_weight = x[:len(ids), :]
                         expr_weight = x[len(ids):, :]
-
-                        face_weight = x
-                        face_weight_norm = face_weight.T @ face_weight
-
-                        return default_cost_function(Q, Rt, neutral, ids, exps, id_weight, expr_weight, y ) #+ face_weight_norm 
-
-                    return wrapper
-                
-
-                def exp_cost_builder3(Q, Rt, neutral, ids, exps, id_weights):
-                    def wrapper(x,y):
-                        face_weight = x
-                        # face_weight_norm = face_weight.T @ face_weight
-
-                        return default_cost_function(Q, Rt, neutral, ids, exps, id_weights, x, y ) #+ face_weight_norm 
-
-                    return wrapper
-                
-                def exp_cost_builder4(Q, neutral, ids, exps, id_weight):
-                    def wrapper(x,y):
-                        expr_weight = x[:-6, :]
-                        w = x[-6:, :]
-                        Rt = get_Rt(*w.ravel())
-
                         return default_cost_function(Q, Rt, neutral, ids, exps, id_weight, expr_weight, y )# + face_weight_norm 
                     return wrapper
                 
@@ -1553,10 +1423,11 @@ class PreProp:
                     return w[index_mapper, :]
 
                 
-                
+
                 path_name = osp.join("cd_test", str(key_id))
                 if not os.path.exists(path_name):
                     os.makedirs(path_name)
+                
                 save_prev = ""
                 for image_i,( (neutral_, ids_, exprs_), lmk2d, sel_lmk_idx) in enumerate(zip(sel_faces, lmk_2ds, sel_lmk_idx_list)) : 
                     print("category :  " , image_i)
@@ -1564,171 +1435,78 @@ class PreProp:
                     
                     Rt = Rt_list[ index_list[image_i] ]
                     Q = Q_list[index_list[image_i] ]
-                    # Q = expr_Q_list[image_i]
-                    # Rt = expr_Rt_list[image_i]
-                    # for con_i, idx in enumerate(self.contour['full_index']):
-                    #     sel_lmk_idx[idx] = contour[con_i]
+                 
                     
-                    neutral_, ids_, exprs_ = get_bars(neutral, ids, expr, sel_lmk_idx)
-                    
+                    neutral_, ids_, exprs_ = self.get_bars(neutral, ids, expr, sel_lmk_idx)
+                    neutral_, ids_, exprs_ = neutral_[ inner_full_face_lmk_idx,:], ids_[:, inner_full_face_lmk_idx,:], exprs_[:, inner_full_face_lmk_idx, :]
+                    lmk2d = np.array(lmk2d)[inner_full_face_lmk_idx]
         
 
 
-                    init_weight = np.ones((len(exprs_) + len(ids_),1), dtype=np.float64)
-                    rrr = np.random.uniform(0, 1, init_weight.shape)
-                    init_weight*= rrr
-                    init_weight*= 0
+                    init_weight = np.zeros((len(exprs_) + len(ids_),1), dtype=np.float64)
                     
-                    init_weight = np.ones((len(exprs_) + len(ids_)+6,1), dtype=np.float64)
-                    init_weight*= 0
-                    r_x, r_y, r_z = decompose_Rt(Rt)
-                    tx, ty, tz = Rt[:, -1]
-                    init_weight[-6:, :] = np.array([r_x, r_y, r_z, tx, ty, tz]).reshape(-1,1)
+                    # r_x, r_y, r_z = self.decompose_Rt(Rt)
+                    # tx, ty, tz = Rt[:, -1]
+                    # init_weight[-6:, :] = np.array([r_x, r_y, r_z, tx, ty, tz]).reshape(-1,1)
 
 
                     init_weight[:len(ids_), :] = id_weight #id weight init
-                    init_weight[len(ids_):-6, :] = 0.0 # # expr weight init
 
                     def clip_function(x):
                         nonlocal ids_, exprs_
                         x[:len(ids_),0] = np.clip(x[:len(ids_), 0], -1.0, 1.0)
-                        # x[len(ids_):-6,0] = np.clip(x[len(ids_):-6, 0], 0.0, 1 )
-                        x[len(ids_):-6,0] = np.clip(x[len(ids_):-6, 0], 0.0, None )
-                        len_x = len(x)
-                        xxxx = list(range(len_x - 6, len_x - 3))
-                        if i in xxxx:
-                            x[i] %= np.pi*2
-                        return x
-                    
-                    def clip_function2(x):
-                        nonlocal ids_, exprs_
-                        x[:len(ids_),0] = np.clip(x[:len(ids_), 0], -1.0, 1.0)
-                        x[len(ids_):,0] = np.clip(x[len(ids_):, 0], 0.0, 1.0)
-                        return x
-                    def clip_function3(x):
-                        nonlocal ids_, exprs_
-                        x = np.clip(x, 0.0, 1.0)
-                        return x
-                    def clip_function4(x):
-                        nonlocal ids_, exprs_
-                        x[:-6, :] = np.clip(x[:-6, :], 0.0, 1.0)
-                        len_x = len(x)
-                        xxxx = list(range(len_x - 6, len_x - 3))
-                        if i in xxxx:
-                            x[i] %= np.pi*2
+                        x[len(ids_):,0] = np.clip(x[len(ids_):, 0], 0.0, 1.0 )
                         return x
 
                     # https://dl.acm.org/doi/pdf/10.1145/2070781.2024196
 
                     coordinate_descent_iter = 100
-                    fflag = 0
-                    if fflag == 0 :
-                        opt_result, grad_history, alpha_history = coordinate_descent(exp_cost_builder(Q, neutral_, ids_, exprs_), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function)
-                        cam_weight = opt_result[-6:, 0]
-                        exp_weight = opt_result[len(ids_):-6, :]
-                        Rt_list[ index_list[image_i] ] = get_Rt(*cam_weight.ravel())
-                        expr_weights[index_list[image_i]] = exp_weight
-                        save_prev = "Rt_id_expr_"
-                        print(self.mouth_names)
-                        base = ""
-                        for e, w in zip(self.mouth_names, exp_weight[self.mouth_coeff_index, :].ravel()):
-                            base += "{} : {} \n".format(e, w)
-                        print(base)
-                        for eee in range(len(grad_history)):
-                            np.savetxt("cd_test/grad_his.txt",grad_history[eee], fmt="%.3f")
-                            np.savetxt("cd_test/alpha.txt",alpha_history[eee], fmt="%.3f")
-                    elif fflag == 6:
-                        
-                        opt_result, grad_history, alpha_history = coordinate_descent(exp_cost_builder(Q, neutral_, ids_, exp_mapper(exprs_, self.norm_base_expr_mesh_index)), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function)
-                        cam_weight = opt_result[-6:, 0]
-                        exp_weight = opt_result[len(ids_):-6, :]
-                        exp_weight = weight_mapper(exp_weight, self.norm_base_expr_mesh_index_revert)
-
-                        Rt_list[ index_list[image_i] ] = get_Rt(*cam_weight.ravel())
-                        expr_weights[index_list[image_i]] = exp_weight
-                        save_prev = "Rt_id_expr_"
-                        print(self.mouth_names)
-                        base = ""
-                        for e, w in zip(self.mouth_names, exp_weight[self.mouth_coeff_index, :].ravel()):
-                            base += "{} : {} \n".format(e, w)
-                        print(base)
-                        for eee in range(len(grad_history)):
-                            np.savetxt("cd_test/grad_his.txt",grad_history[eee], fmt="%.3f")
-                            np.savetxt("cd_test/alpha.txt",alpha_history[eee], fmt="%.3f")
-
-                    
-                    elif fflag == 1 :
-                        init_weight = init_weight[:-6]
-                        opt_result = coordinate_descent(exp_cost_builder2(Q, Rt, neutral_, ids_, exprs_), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function2)
-                        exp_weight = opt_result[len(ids_):, :]
-                        # id_weight = opt_result[:len(ids_), :]
-                        # Rt_list[ index_list[image_i] ] =Rt
-                        expr_weights[index_list[image_i]] = exp_weight
-                        save_prev = "id_expr_only_"
-                    elif fflag == 2:
-                        init_weight = init_weight[len(ids):-6, :]
-                        opt_result, _, _ = coordinate_descent(exp_cost_builder3(Q, Rt, neutral_, ids_, exprs_, id_weight), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function3)
-                        exp_weight = opt_result
-                        # Rt_list[ index_list[image_i] ] =Rt 
-                        expr_weights[index_list[image_i]] = exp_weight
-                        save_prev = "expr_only_"
-                    elif fflag == 3: #without opt
-                        # Rt_list[ index_list[image_i] ] =Rt
-                        save_prev = "Rt_only_"
-
-                    elif fflag == 4 : #with gradient descent method (BFGS)
-                        opt_result = bfgs_method(exp_cost_builder(Q, neutral_, ids_, exprs_), init_weight, lmk2d, 0)
-                        exp_weight = opt_result[len(ids_):-6, :]
-                        # id_weight = opt_result[:len(ids_), :]
-                        cam_weight = opt_result[-6:, 0]
-
-                        Rt_list[ index_list[image_i] ] = get_Rt(*cam_weight.ravel())
-                        expr_weights[index_list[image_i]] = exp_weight                        
-                        save_prev="grad_descent_"
-                    elif fflag == 5: #expr and Rt opt
-                        # fitting camera first.
-                        init_weight = init_weight[len(ids_):, :]
-                        opt_result, _, _ = coordinate_descent(exp_cost_builder4(Q, neutral_, ids_, exprs_, id_weight), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function4)
-                        # fit identity and expression
-                        expr_weights[index_list[image_i]] = opt_result[:len(exprs_), :]
-                        cam_weight = opt_result[len(exprs_):, :]
-                        new_Rt = get_Rt(*cam_weight.ravel())
-                        Rt_list[ index_list[image_i] ] = new_Rt
-                        save_prev = "expr_Rt_"
+                    opt_result, grad_history, alpha_history = self.coordinate_descent(exp_cost_builder(Q, Rt, neutral_, ids_, exprs_), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function)
+                    exp_weight = opt_result[len(ids_):, :]
+                    expr_weights[index_list[image_i]] = exp_weight
+                    save_prev = "Rt_id_expr_"
+                       
                     save_prev = "citer_{}_{}".format(str(coordinate_descent_iter), save_prev)
                     
-                    save_png(path_name, "{}_iter_{}".format(save_prev,iter_i), *[index_list[image_i]], iteration=str(iter_i))
+                    self.save_png2(neutral, ids, expr, self.img_list, id_weight, expr_weights, Q_list, Rt_list, lmk_2d_list,lmk_idx_list, path_name, "{}_iter_{}".format(save_prev,iter_i), *[index_list[image_i]], iteration=str(iter_i))
                     
-                    # Rt_list[ index_list[image_i] ] = get_Rt(*cam_weight.ravel())
-                    # Rt_list[ index_list[image_i] ] =Rt
-                    # Q_list[ index_list[image_i] ] = Q_list[image_i]
-
-                    # # vv = get_combine_model(id_weight, exp_weight)
-                    # vv = get_combine_model(id_weight, np.zeros_like(expr_weights[0]))
-                    # igl.write_triangle_mesh(os.path.join(path_name, "expression_" +str(image_i)+ ".obj"), vv, self.neutral_mesh_f)
                     cv2.imwrite(osp.join(path_name, name+".png"), sel_imgs[image_i])
+              
 
-                # expr_weights[key_id] = exp_weight
-            # #===========================================================================================
-            #     # expr_weights.append(exp_weight)
-                time_t = False
-
-                # save_png(path_name, "{}_iter_{}".format(save_prev,i), *index_list, iteration=str(iter_i))
-                    
-
-                
-            
 
             # phase 2
             def id_cost_funciton_builder(Q_list, Rt_list, v_idx_sel_index_list, expr_weight_list, lmk_2d_list):
+                nonlocal default_cost_function
                 prp_vert = [] 
                 for v_idx_sel_index in v_idx_sel_index_list:
-                    new_v = get_bars(neutral, ids, expr, v_idx_sel_index)
+                    new_v = self.get_bars(neutral, ids, expr, v_idx_sel_index)
                     prp_vert.append(new_v)
+
                 def wrapper(x,y):# we do not use y in here.
                     cost_z = 0
+                    Qs = []
+                    Rts = []
+                    neturals = []
+                    ids = []
+                    exprs = []
+                    xs = []
+                    expr_ws=[]
+                    lmk_2ds= []
+                    objects = []
                     for Q, Rt, (neutral_b, ids_b, expr_b), expr_w, lmk_2d in zip(Q_list, Rt_list, prp_vert, expr_weight_list, lmk_2d_list):
-                        cost_z += default_cost_function(Q, Rt, neutral_b, ids_b, expr_b, x, expr_w, lmk_2d) 
+                        Qs.append(Q)
+                        Rts.append(Rt)
+                        objects.append(self)
+                        neturals.append(neutral_b)
+                        ids.append(ids_b)
+                        exprs.append(expr_b)
+                        xs.append(x)
+                        expr_ws.append(expr_w)
+                        lmk_2ds  .append(lmk_2d)
+                        # cost_z += fmath.default_cost_function(Q, Rt, neutral_b, ids_b, expr_b, x, expr_w, lmk_2d) 
+                        
+                    res = self.pool.map(fmath.default_cost_function_mt, zip(Qs, Rts, neturals, ids, exprs, xs, expr_ws, lmk_2ds))
+                    cost_z = sum(res)
                     return cost_z
                 return wrapper
                 
@@ -1736,8 +1514,9 @@ class PreProp:
                 nonlocal ids_, exprs_
                 x = np.clip(x, -1.0, 1.0)
                 return x
+            
             init_id_weight = np.zeros_like(id_weight, dtype = np.float32)
-            res_id_weight, _, _ = coordinate_descent(id_cost_funciton_builder(Q_list, Rt_list, lmk_idx_list, expr_weights, lmk_2d_list), init_id_weight, None, coordinate_descent_iter, clip_func=clip_function4)
+            res_id_weight, _, _ = self.coordinate_descent(id_cost_funciton_builder(Q_list, Rt_list, lmk_idx_list, expr_weights, lmk_2d_list), init_id_weight, None, coordinate_descent_iter, clip_func=clip_function4)
             id_weight  = res_id_weight
             print("id expression :", id_weight.ravel())
             
@@ -1749,22 +1528,9 @@ class PreProp:
                 np.savetxt("cd_test/Q_iter_{}_{}".format(iter_i,name), Q)
                 np.savetxt("cd_test/Rt_iter_{}_{}".format(iter_i,name), Rt)
             
-            for i, info in enumerate(self.img_list):
-
-                lmk_2ds = info['lmk_data']
-                img_index =  info['index']
-                sel_lmk_idx = lmk_idx_list[info['index']]
-                vv = get_combine_model(id_weight, expr_weights[img_index])
-                pts2d = add_Rt_to_pts(Q_list[img_index], Rt_list[img_index], vv)
-                contour = find_contour(np.array(lmk_2d_list[img_index])[self.contour['full_index']], pts2d)
-
-                for con_i, idx in enumerate(self.contour['full_index']):
-                    sel_lmk_idx[idx] = contour[con_i]
-
-
 
         gen_expression = np.zeros_like(expr_weights[0])
-        user_identity_v = get_combine_model(id_weight, gen_expression)
+        user_identity_v = self.get_combine_model(neutral, ids, expr, id_weight, gen_expression)
         import igl
         igl.write_triangle_mesh("cd_test/gen_identity.obj", user_identity_v, self.neutral_mesh_f)
         
@@ -1774,7 +1540,7 @@ class PreProp:
         self.expressions_v = np.zeros((len(gen_expression), self.identity_v.shape[0], self.identity_v.shape[1]))
         for i in range(len(gen_expression)):
             gen_expression[i, 0 ] = 1.0
-            user_epxr_v = get_combine_model(id_weight, gen_expression)
+            user_epxr_v = self.get_combine_model(neutral, ids, expr,id_weight, gen_expression)
             self.expressions_v[i, ...] = user_epxr_v
             igl.write_triangle_mesh("cd_test/gen_expression_{}.obj".format(str(i)), user_epxr_v, self.neutral_mesh_f)
             gen_expression[i, 0 ] = 0.0
@@ -1860,24 +1626,28 @@ class PreProp:
             new_z = new_z.T @ new_z +  w_reg * weight_diff.T @ weight_diff
 
             return new_z
-        
+        inner_face_lmk_idx = self.eyebrow['left_eyebrow']['full_index'] + \
+            self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']
+            
         def camera_posit_func_builder(Q, neutral_bar ,exprs_bar):
             def camera_posit_func(expr_weight, pts2d, is_First  = False, initial_Rt = None):
-                nonlocal neutral_bar, exprs_bar
-                # if is_First :
-                #     ind = [ii for ii in range(len(neutral_bar)) if ii not in self.contour['full_index']]
-                # # ind = [ii for ii in range(len(neutral_bar)) if ii in self.contour['full_index']]
-                #     neutral_bar = neutral_bar[ind, :]
-                #     exprs_bar = exprs_bar[:, ind, :]
-                #     pts2d = pts2d[ind, :]
+                nonlocal neutral_bar, exprs_bar, inner_face_lmk_idx
+                if is_First :
+                    ind = inner_face_lmk_idx
+                # ind = [ii for ii in range(len(neutral_bar)) if ii in self.contour['full_index']]
+                    neutral_bar = neutral_bar[ind, :]
+                    exprs_bar = exprs_bar[:, ind, :]
+                    pts2d = pts2d[ind, :]
 
                 pts3d = self.get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
 
-                # _, Rt = self.find_camera_matrix(pts3d, pts2d, guessed_projection_Qmat=Q )
-
-                succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
-                rot = cv2.Rodrigues(rvec)[0]
-                rx,ry,rz = self.decompose_Rt(rot)
+                # new_Q, Rt = self.find_camera_matrix(pts3d, pts2d)
+                Rt = self.find_camera_parameter_by_cv2(pts3d, pts2d, guessed_Q= Q)
+                rx, ry, rz = self.decompose_Rt(Rt)
+                tvec = Rt[:, -1].reshape(-1,1)
+                # succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
+                # rot = cv2.Rodrigues(rvec)[0]
+                # rx,ry,rz = self.decompose_Rt(rot)
                 # rx, ry, rz = self.decompose_Rt(Rt)
                 # tvec = Rt[:, -1].reshape(-1,1)
                 return rx,ry,rz, tvec[0, 0 ], tvec[1, 0], tvec[2, 0]
@@ -1929,7 +1699,6 @@ class PreProp:
             # category_predef_weight = np.load(osp.join("./predefined_face_weight", "disgust" + ".npy"))
 
             # pre_def_weights =  [ category_predef_weight for info in item ]
-
 
             sel_lmk_idx_list = [ lmk_idx_list[info['index']] for info in item ]
             sel_lmk_idx_list = [np.copy(lmk_idx)  for _ in range(len(item))]
@@ -2053,5 +1822,6 @@ if __name__ == "__main__":
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
     p.extract_train_set_blendshapes()
+ 
