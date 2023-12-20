@@ -19,6 +19,7 @@ import scipy.optimize as opt
 import copy 
 from multiprocessing import Pool
 import argparse
+import random 
 
 import fmath
 np.set_printoptions(precision=3, suppress=True)
@@ -1687,7 +1688,7 @@ class PreProp:
                 expr_bar = new_expr_bar
 
             return wrapper, redefine_bars
-        
+        expr_w_list = [np.zeros((expr_num, 1), dtype=np.float32) for _ in range(self.img_list)]
         for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())): 
             
             
@@ -1788,9 +1789,155 @@ class PreProp:
                 expr_weight = expr_weight
                 reg_alpha_star =reg_alpha_star
                 # expr_weight = pre_def_w[1:, :]
+
+                expr_w_list[idx][...] = expr_weight
                 # self.save_png(osp.join(self.save_root_dir, "test"), "test_info_{}".format(name), user_specific_neutral, None, user_specific_expr, None, expr_weight, Q, new_Rt, sel_img, lmk2d, 3, alpha=reg_alpha_star)
                 self.save_png(osp.join(self.save_root_dir, "test"), "test_info_{}".format(name), user_specific_neutral, None, user_specific_expr, None, expr_weight, Q, new_Rt, sel_img, lmk2d, 3, alpha=reg_alpha_star)
 
+        for i, info in tqdm.tqdm(enumerate(self.img_list)): 
+            idx  = info['index']
+            info['expr_weight'] = expr_w_list[idx]
+            info['Rt'] = Rt_list[idx]
+        
+
+
+
+
+    def generate_train_data(self , G = 5, H = 4):
+        """
+            make translate 
+        """
+
+        def add_limited_translate(v, Q, Rt, x, y, width, height):
+            Rt_inv = np.eye(3,4,dtype=np.float32)
+            scaled_x = x*1.0
+            scaled_y = y*1.0
+            Rt = np.copy(Rt)
+            while True:
+                Rt[0, -1] += scaled_x
+                Rt[1, -1] += scaled_y
+                res = self.add_Rt_to_pts(Q, Rt, v)
+                if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] > width)) and (np.any(res[:, 1] < 0) or np.any(res[:, 1] > height))):
+                    factor_x, factor_y = np.random.uniform(0.1, 1, 2)
+                    scaled_x = x*factor_x 
+                    scaled_y = y*factor_y
+                else:
+                    break
+            Rt_inv[0, -1 ] = -scaled_x 
+            Rt_inv[1, -1 ] = -scaled_y
+            return Rt, Rt_inv
+
+
+
+        import re
+        rex = re.compile(r"iter_(\d+).npy")
+
+        def matcher(x):
+            nonlocal rex 
+            return int(rex.findall(x)[0])
+
+        Q_list_paths = glob.glob(osp.join(self.save_root_dir, "Q_list_iter_*"))
+        recent_Q_list_path = sorted(Q_list_paths, key=matcher)[-1]
+        Q_list = np.load(recent_Q_list_path)
+        Q = Q_list[0]
+
+
+        result_data = []
+
+        neutral = self.neutral_mesh_v
+
+        ids_meshes = np.array(self.id_meshes)
+        ids = ids_meshes - np.expand_dims(neutral, axis=0)
+        id_num,_,_ = ids.shape
+
+        expr_meshes = np.array(self.expr_meshes)
+        expr = expr_meshes - np.expand_dims(neutral, axis=0)
+        # expr_bar = expr[..., lmk_idx, :]
+        expr_num, _,_ = expr.shape
+
+        gen_zero_expression_weight = np.zeros((expr_num, 1), dtype=np.float32)
+
+
+        user_specific_neutral = self.get_combine_model(neutral=neutral, ids=ids, expr=expr, w_i = self.id_weight, w_e= gen_zero_expression_weight)
+        user_specific_expr = expr
+        
+        neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, lmk_idx)
+        for i, info in tqdm.tqdm(enumerate(self.img_list)): 
+            Rt = info['Rt']
+            img = info['img']
+            h, w, _ = img.shape
+            expr_w = info['expr_weight']
+            pose = self.get_combine_bar_model(neutral_bar, None, expr_bar, None, w_e=expr_w)
+            image_data = []
+            for command in tqdm.tqdm(["", "x", "-x", "-y","-y", "x,y","-x,y","x,-y", "-x,-y"]):
+                x = 0
+                y = 0
+                res = command.split(",")
+                if res == len(1):
+                    res = res[0]
+                    if res.endswith('x'):
+                        x = abs(np.random.normal(0, w / 2))
+                        if res.startswith('-'):
+                            x*=-1.0
+                    elif res.endswith('y'):
+                        y = abs(np.random.normal(0, h / 2))
+                        if res.startswith('-'):
+                            y*=-1.0
+                else:
+                    x_cmd, y_cmd = res
+                    x = abs(np.random.normal(0, w / 2))
+                    y = abs(np.random.normal(0, h / 2))
+                    if x_cmd.startswith("-"):
+                        x = -1.0*x
+                    if y_cmd.startswith("-"):
+                        y = -1.0*y
+
+                Rt_new, Rt_inv = add_limited_translate(pose, Q, Rt, x, y, w, h)
+
+                new_pose = fmath.add_Rt_to_mesh(Rt_new, pose)
+                pdata = {"image" : img, "S" : new_pose, "Rt_inv" : Rt_inv}
+                image_data.append(pdata)
+            result_data.append(image_data)
+
+
+
+        def find_great_similarityGH_from_dataset(dataset, img_data, G, H):
+            """
+                dataset : 2-d python array
+            """
+            
+            picked_pose = img_data['S']
+            picked_pose_centroid = np.mean(pose, axis=0, keepdims=True)
+            centric_picked_pose = picked_pose - picked_pose_centroid
+            cloest_original_pose_index = []
+            losses_between_picked_pose_n_original_pose = []
+            for orig_index, original_S_i , *_ in dataset: # unpack first
+                picked_original_pose = original_S_i['S']
+                picked_original_pose_centroid = np.mean(pose, axis=0, keepdims= True)
+                centric_picked_original_pose = picked_original_pose - picked_original_pose_centroid
+                loss = np.sum(np.sqrt(np.sum((centric_picked_pose - centric_picked_original_pose) ** 2, axis=1)))
+                losses_between_picked_pose_n_original_pose.append([orig_index,loss])
+            sorted_losses_between_picked_pose_n_original_pose = sorted(losses_between_picked_pose_n_original_pose, key = lambda x : x[1]) # sorted by loss
+            selected_G_list = sorted_losses_between_picked_pose_n_original_pose[:G]
+            samples = []
+            for iG, _ in selected_G_list:
+                # TODO is it include original shapes or not? I have no idea about that.
+                # currently I sample H from whole list that inlcude original shape S_o
+                samples += random.sample(dataset[iG] , k=H) # weight is same. no dups
+            return samples
+
+        result_data = copy.deepcopy(result_data)
+
+        # select similar init pose and random init pose(G and H)
+        for i, i_group_data_list  in enumerate(result_data):
+            for j, data in i_group_data_list:
+                GH_list = find_great_similarityGH_from_dataset(result_data, data, G, H)
+                data["S_init"] : GH_list
+
+
+        # save all data to file. wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
+        meta = {"name" : "data", "location" : "data.npy"}
+        train_data_path = os.path(self.save_root_dir, "train_dataset")
 
     def set_save_root_directory(self, path):
         self.save_root_dir = path

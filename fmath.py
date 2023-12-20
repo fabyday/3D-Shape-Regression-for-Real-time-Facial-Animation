@@ -7,7 +7,10 @@ def normalize(x):
     normalized_x = (x - mean)/std
     return normalized_x, mean, std
 
-
+def add_Rt_to_mesh(Rt, v):
+    new_Rt = Rt[:3,:3]
+    new_trans = Rt[:, -1]
+    return (new_Rt@v.T + new_trans).T
 
 def get_Rt(theta_x, theta_y, theta_z, tx, ty, tz):
     Rx = np.eye(3,3)
