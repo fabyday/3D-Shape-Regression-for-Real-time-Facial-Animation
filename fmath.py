@@ -9,7 +9,7 @@ def normalize(x):
 
 def add_Rt_to_mesh(Rt, v):
     new_Rt = Rt[:3,:3]
-    new_trans = Rt[:, -1]
+    new_trans = Rt[:, -1, np.newaxis]
     return (new_Rt@v.T + new_trans).T
 
 def get_Rt(theta_x, theta_y, theta_z, tx, ty, tz):

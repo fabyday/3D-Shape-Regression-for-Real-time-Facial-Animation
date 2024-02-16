@@ -638,58 +638,59 @@ class PreProp:
             "prev_exprs"
             "prev_lmk_idx"
             """
-            Rt= self.get_Rt(*w[-6:, :].ravel())
-            w = w[:-6, :]
+            if options.get("verbose", False):
+                Rt= self.get_Rt(*w[-6:, :].ravel())
+                w = w[:-6, :]
 
-            img = kwargs.get("img", None)
-            mesh = kwargs.get("mesh", None)
-            if img is not None :
-                Q = mesh.get("Q", None )
-                neutral = mesh.get("neutral", None)
-                exprs = mesh.get("exprs", None)
-                f = mesh.get("f", None)
-                m_color = mesh.get("color", (0.5, 0, 0))
-                pts_3d = self.get_combine_model(neutral, None, exprs,None, w )
-                pts_2d = self.add_Rt_to_pts(Q, Rt, pts_3d)
+                img = kwargs.get("img", None)
+                mesh = kwargs.get("mesh", None)
+                if img is not None :
+                    Q = mesh.get("Q", None )
+                    neutral = mesh.get("neutral", None)
+                    exprs = mesh.get("exprs", None)
+                    f = mesh.get("f", None)
+                    m_color = mesh.get("color", (0.5, 0, 0))
+                    pts_3d = self.get_combine_model(neutral, None, exprs,None, w )
+                    pts_2d = self.add_Rt_to_pts(Q, Rt, pts_3d)
 
-                if not (Q is None or  neutral is None or exprs is None or f is None ): 
-                    res = vis.draw_mesh_to_img(img, Q, Rt, pts_3d, f, color = m_color)
+                    if not (Q is None or  neutral is None or exprs is None or f is None ): 
+                        res = vis.draw_mesh_to_img(img, Q, Rt, pts_3d, f, color = m_color)
 
 
-                # 
-                lmk_idx = kwargs.get("lmk_idx", None )
-                contour_index = kwargs.get("contour_index", None )
-                width = kwargs.get("width", 1000)
-                
-                x_info = kwargs.get("x_info", None)
-                y_info = kwargs.get("y_info", None)
+                    # 
+                    lmk_idx = kwargs.get("lmk_idx", None )
+                    contour_index = kwargs.get("contour_index", None )
+                    width = kwargs.get("width", 1000)
+                    
+                    x_info = kwargs.get("x_info", None)
+                    y_info = kwargs.get("y_info", None)
 
-                prev_lmk_idx = options.get("prev_lmk_idx", None )
-                if not (lmk_idx is None or  contour_index is None) :
-                    print(prev_lmk_idx == lmk_idx)
-                    if  prev_lmk_idx is not None:
-                        pts_color = x_info.get("pts", (255,0,0))
-                        prev_pts3d = self.get_combine_model(neutral, None, exprs,None, w )
-                        prev_pts_2d = self.add_Rt_to_pts(Q, Rt, prev_pts3d)
-                        res = vis.draw_contour(res, prev_pts_2d[prev_lmk_idx, :], contour_index, (255,0,255), (255,0,255))
-                        if x_info is not None :
-                            res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index],  prev_pts_2d[prev_lmk_idx, :][contour_index], color=(255,255,0))
-                    if x_info is not None:
-                        pts_color = x_info.get("pts", (255,0,0))
-                        line_color = x_info.get("line", (255,255,0))
-                        res = vis.draw_contour(res, pts_2d[lmk_idx, :], contour_index, pts_color, line_color)
-                    if y_info is not None:
-                        pts_color = y_info.get("pts", (0,0,255))
-                        line_color = y_info.get("line", (0,255,255))
-                        res = vis.draw_contour(res, y, contour_index, pts_color, line_color)
-                    if x_info is not None and y_info is not None: 
-                        res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index], y[contour_index])
+                    prev_lmk_idx = options.get("prev_lmk_idx", None )
+                    if not (lmk_idx is None or  contour_index is None) :
+                        print(prev_lmk_idx == lmk_idx)
+                        if  prev_lmk_idx is not None:
+                            pts_color = x_info.get("pts", (255,0,0))
+                            prev_pts3d = self.get_combine_model(neutral, None, exprs,None, w )
+                            prev_pts_2d = self.add_Rt_to_pts(Q, Rt, prev_pts3d)
+                            res = vis.draw_contour(res, prev_pts_2d[prev_lmk_idx, :], contour_index, (255,0,255), (255,0,255))
+                            if x_info is not None :
+                                res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index],  prev_pts_2d[prev_lmk_idx, :][contour_index], color=(255,255,0))
+                        if x_info is not None:
+                            pts_color = x_info.get("pts", (255,0,0))
+                            line_color = x_info.get("line", (255,255,0))
+                            res = vis.draw_contour(res, pts_2d[lmk_idx, :], contour_index, pts_color, line_color)
+                        if y_info is not None:
+                            pts_color = y_info.get("pts", (0,0,255))
+                            line_color = y_info.get("line", (0,255,255))
+                            res = vis.draw_contour(res, y, contour_index, pts_color, line_color)
+                        if x_info is not None and y_info is not None: 
+                            res = vis.draw_pts_mapping(res, pts_2d[lmk_idx, :][contour_index], y[contour_index])
 
-                        
-                    vis.set_delay(1)
+                            
+                        vis.set_delay(1)
 
-                    res = vis.resize_img(res, width)
-                    vis.show("shu shu, ", res)
+                        res = vis.resize_img(res, width)
+                        vis.show("shu shu, ", res)
 
         if len(init_x.shape) == 1 : 
             init_x = init_x.reshape(-1, 1)
@@ -743,10 +744,11 @@ class PreProp:
                 slide = -6
                 start_iteriter = 5
                 iteriter  = start_iteriter
-                img = np.copy(kwargs.get("img", None))
-                img = vis.resize_img(img, 1000)
-                vis.set_delay(1000)
-                vis.show("Rt fit",img)
+                if kwargs.get("verbose", False):
+                    img = np.copy(kwargs.get("img", None))
+                    img = vis.resize_img(img, 1000)
+                    vis.set_delay(1000)
+                    vis.show("Rt fit",img)
                 while iteriter:
                     if iter_i == 0  and iteriter == start_iteriter:
                         
@@ -767,17 +769,18 @@ class PreProp:
                     if contour_mapper_func is not None :
                         new_lmk_indx = contour_mapper_func(x) # do not modify its values.
                         new_lmk_idx_history.append(new_lmk_indx)
-                    img = kwargs.get("img", None)
-                    mesh = kwargs.get("mesh", None)
-                    Q = mesh.get("Q", None )
-                    neutral = mesh.get("neutral", None)
-                    exprs = mesh.get("exprs", None)
-                    f = mesh.get("f", None)
-                    m_color = mesh.get("color", (0.5, 0, 0))
-                    aaa= x[slide:, :].ravel()
-                    ig = vis.draw_mesh_to_img(img, Q, self.get_Rt(*x[slide:, :].ravel()), self.get_combine_model(neutral, None, exprs, None, x[:slide, :]), f, m_color, 1000, "iter : {}".format(start_iteriter +1 -iteriter))
-                    vis.set_delay(100)
-                    vis.show("Rt fit",ig)
+                    if kwargs.get("verbose", False):
+                        img = kwargs.get("img", None)
+                        mesh = kwargs.get("mesh", None)
+                        Q = mesh.get("Q", None )
+                        neutral = mesh.get("neutral", None)
+                        exprs = mesh.get("exprs", None)
+                        f = mesh.get("f", None)
+                        m_color = mesh.get("color", (0.5, 0, 0))
+                        aaa= x[slide:, :].ravel()
+                        ig = vis.draw_mesh_to_img(img, Q, self.get_Rt(*x[slide:, :].ravel()), self.get_combine_model(neutral, None, exprs, None, x[:slide, :]), f, m_color, 1000, "iter : {}".format(start_iteriter +1 -iteriter))
+                        vis.set_delay(100)
+                        vis.show("Rt fit",ig)
                     iteriter -= 1
             for i in range(len(x[:slide])):
                 xi = x[i, 0]
@@ -1551,7 +1554,7 @@ class PreProp:
         np.save("./cd_test/identity_weight.txt", self.id_weight)
 
 
-    def extract_train_set_blendshapes(self):
+    def extract_train_set_blendshapes(self, visualsize = False):
         """
             this method use shape_fit method's actor(user)-specific blendshapes result.
             neutral pose : user-specific neutral pose
@@ -1688,7 +1691,7 @@ class PreProp:
                 expr_bar = new_expr_bar
 
             return wrapper, redefine_bars
-        expr_w_list = [np.zeros((expr_num, 1), dtype=np.float32) for _ in range(self.img_list)]
+        expr_w_list = [np.zeros((expr_num, 1), dtype=np.float32) for _ in range(len(self.img_list))]
         for key_id, item in tqdm.tqdm(enumerate(self.img_and_info.values())): 
             
             
@@ -1753,8 +1756,8 @@ class PreProp:
                 #                                     init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, 
                 #                                     camera_refinement_func= camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar),
                 #                                     contour_mapper_func= contour_remap )
-                
-                res, _, _ = self.coordinate_descent_LBFGS(cost_f,
+                if visualsize:
+                    res, _, _ = self.coordinate_descent_LBFGS(cost_f,
                                                     init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, 
                                                     camera_refinement_func= camera_func,
                                                     contour_mapper_func= contour_remap,
@@ -1767,7 +1770,12 @@ class PreProp:
                                                             "y_info": {"pts":(0,0,255), "line":(0,255,255)},\
                                                             "width":1000}\
                                                     )
-                
+                else:
+                    res, _, _ = self.coordinate_descent_LBFGS(cost_f,
+                                                    init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, 
+                                                    camera_refinement_func= camera_func,
+                                                    contour_mapper_func= contour_remap, **{"verbose":False})
+
                 # res, _, _ = self.coordinate_descent_LBFGS(cost_f,
                 #                                     init_weight, lmk2d, iter_nums = 100 ,clip_func = clip_function, 
                 #                                     camera_refinement_func= camera_func,
@@ -1814,8 +1822,8 @@ class PreProp:
             scaled_y = y*1.0
             Rt = np.copy(Rt)
             while True:
-                Rt[0, -1] += scaled_x
-                Rt[1, -1] += scaled_y
+                Rt[0, -1] = scaled_x
+                Rt[1, -1] = scaled_y
                 res = self.add_Rt_to_pts(Q, Rt, v)
                 if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] > width)) and (np.any(res[:, 1] < 0) or np.any(res[:, 1] > height))):
                     factor_x, factor_y = np.random.uniform(0.1, 1, 2)
@@ -1827,7 +1835,7 @@ class PreProp:
             Rt_inv[1, -1 ] = -scaled_y
             return Rt, Rt_inv
 
-
+        print("generate train set")
 
         import re
         rex = re.compile(r"iter_(\d+).npy")
@@ -1864,7 +1872,8 @@ class PreProp:
         neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, lmk_idx)
         for i, info in tqdm.tqdm(enumerate(self.img_list)): 
             Rt = info['Rt']
-            img = info['img']
+            img = info['img_data']
+            img_name = info['name']
             h, w, _ = img.shape
             expr_w = info['expr_weight']
             pose = self.get_combine_bar_model(neutral_bar, None, expr_bar, None, w_e=expr_w)
@@ -1873,20 +1882,20 @@ class PreProp:
                 x = 0
                 y = 0
                 res = command.split(",")
-                if res == len(1):
+                if len(res) == 1:
                     res = res[0]
                     if res.endswith('x'):
-                        x = abs(np.random.normal(0, w / 2))
+                        x = abs(np.random.normal(0))
                         if res.startswith('-'):
                             x*=-1.0
                     elif res.endswith('y'):
-                        y = abs(np.random.normal(0, h / 2))
+                        y = abs(np.random.normal(0))
                         if res.startswith('-'):
                             y*=-1.0
                 else:
                     x_cmd, y_cmd = res
-                    x = abs(np.random.normal(0, w / 2))
-                    y = abs(np.random.normal(0, h / 2))
+                    x = abs(np.random.normal(0))
+                    y = abs(np.random.normal(0))
                     if x_cmd.startswith("-"):
                         x = -1.0*x
                     if y_cmd.startswith("-"):
@@ -1895,7 +1904,7 @@ class PreProp:
                 Rt_new, Rt_inv = add_limited_translate(pose, Q, Rt, x, y, w, h)
 
                 new_pose = fmath.add_Rt_to_mesh(Rt_new, pose)
-                pdata = {"image" : img, "S" : new_pose, "Rt_inv" : Rt_inv}
+                pdata = {"image" : img, "name" : img_name , "S" : new_pose, "Rt_inv" : Rt_inv}
                 image_data.append(pdata)
             result_data.append(image_data)
 
@@ -1911,7 +1920,7 @@ class PreProp:
             centric_picked_pose = picked_pose - picked_pose_centroid
             cloest_original_pose_index = []
             losses_between_picked_pose_n_original_pose = []
-            for orig_index, original_S_i , *_ in dataset: # unpack first
+            for orig_index, (original_S_i , *_) in enumerate(dataset): # unpack first
                 picked_original_pose = original_S_i['S']
                 picked_original_pose_centroid = np.mean(pose, axis=0, keepdims= True)
                 centric_picked_original_pose = picked_original_pose - picked_original_pose_centroid
@@ -1930,14 +1939,50 @@ class PreProp:
 
         # select similar init pose and random init pose(G and H)
         for i, i_group_data_list  in enumerate(result_data):
-            for j, data in i_group_data_list:
+            for j, data in enumerate(i_group_data_list):
                 GH_list = find_great_similarityGH_from_dataset(result_data, data, G, H)
-                data["S_init"] : GH_list
+                data["S_init"] = [GH_item['S'] for GH_item in GH_list]
 
 
         # save all data to file. wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
         meta = {"name" : "data", "location" : "data.npy"}
-        train_data_path = os.path(self.save_root_dir, "train_dataset")
+        train_data_dir_name = "train_dataset"
+        train_data_path = os.path.join(self.save_root_dir, train_data_dir_name)
+        if not osp.exists(train_data_path):
+            os.makedirs(train_data_path)
+
+        img_list =[]
+        S_list = [] 
+        Rt_inv_list = []
+        init_pose_list = []
+        for i_group_data_list in result_data:
+            for data in i_group_data_list:
+                for init_pose in data["S_init"]:
+                    img_list.append(data['name'])
+                    S_list.append(data['S'])
+                    Rt_inv_list.append(data['Rt_inv'])
+                    init_pose_list.append(init_pose)
+
+        # np.savez(os.path.join(train_data_path, "data.npz"), image=np.asarray(img_list), S=np.asarray(S_list), Rt_inv=np.asarray(Rt_inv), S_init=np.asarray(init_pose_list))
+        np.save(os.path.join(train_data_path, "image"),img_list)
+        np.save(os.path.join(train_data_path, "S"), S_list)
+        np.save(os.path.join(train_data_path, "Rt_inv"), Rt_inv_list)
+        np.save(os.path.join(train_data_path, "S_init"), init_pose_list)
+        
+        np.save(osp.join(self.save_root_dir, "Q_list"), Q)
+        meta_content = {"Q_location" : "Q_list.npy", 
+                        "S_location": "S.npy",
+                        "data_root" : train_data_dir_name,
+                        "image_name_location": "image.npy",
+                        "Rt_inv_location" : "Rt_inv.npy",
+                        "S_init_location" : "S_init.npy",
+                        "image_root_location" : self.img_root, 
+                        "image_extension" : self.img_file_ext}
+        with open(osp.join(self.save_root_dir, "meta.txt"), 'w') as fp :
+            yaml.dump(meta_content, fp)
+        
+                
+
 
     def set_save_root_directory(self, path):
         self.save_root_dir = path
@@ -1969,6 +2014,7 @@ if __name__ == "__main__":
     print(len(lmk_idx))
     p.set_save_root_directory("./cd_test")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
-    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, True)
+    p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
     p.extract_train_set_blendshapes()
+    p.generate_train_data()
  
