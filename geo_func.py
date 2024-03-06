@@ -130,5 +130,6 @@ def similarity_transform2(A, B):
     """
     A to B scale, rot matrix. least square.
     R @ A  = B
+    R = (A.At) = B @ A.T @ inv(A, At)
     """
     return B.T @ A @ np.linalg.inv(A.T@A)

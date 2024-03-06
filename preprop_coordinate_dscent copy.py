@@ -1468,6 +1468,7 @@ class PreProp:
                     opt_result, grad_history, alpha_history = self.coordinate_descent(exp_cost_builder(Q, Rt, neutral_, ids_, exprs_), init_weight, lmk2d, coordinate_descent_iter, clip_func=clip_function)
                     exp_weight = opt_result[len(ids_):, :]
                     expr_weights[index_list[image_i]] = exp_weight
+
                     save_prev = "Rt_id_expr_"
                        
                     save_prev = "citer_{}_{}".format(str(coordinate_descent_iter), save_prev)
@@ -1870,65 +1871,108 @@ class PreProp:
         user_specific_expr = expr
         
         neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, lmk_idx)
+
+        def add_rt(Rt, v):
+            return (Rt@np.concatenate([v, np.ones((len(v),1), dtype=np.float32)], axis=-1).T).T
+
         for i, info in tqdm.tqdm(enumerate(self.img_list)): 
             Rt = info['Rt']
             img = info['img_data']
             img_name = info['name']
             h, w, _ = img.shape
             expr_w = info['expr_weight']
+
             pose = self.get_combine_bar_model(neutral_bar, None, expr_bar, None, w_e=expr_w)
-            image_data = []
-            for command in tqdm.tqdm(["", "x", "-x", "-y","-y", "x,y","-x,y","x,-y", "-x,-y"]):
+            
+            new_pose = add_rt(Rt, pose)
+            
+            image_data = [{"image" : img, "name" : img_name , "S" : new_pose, "Rt_inv" : np.eye(3,4, dtype = np.float32)}]
+
+            # cimg  = vis.draw_circle(self.add_Rt_to_pts(Q, Rt,  pose), img, colors=(255,0,0))
+            # cimg = vis.resize_img(cimg, 1000)
+            # vis.show("ti", cimg)
+
+            for command in tqdm.tqdm(["x,y,z", "x,y,-z", "x,-y,z", "x,-y,-z","-x,y,z", "-x,y,-z","-x,-y,z","-x,-y,-z"]):
                 x = 0
                 y = 0
-                res = command.split(",")
-                if len(res) == 1:
-                    res = res[0]
-                    if res.endswith('x'):
-                        x = abs(np.random.normal(0))
-                        if res.startswith('-'):
-                            x*=-1.0
-                    elif res.endswith('y'):
-                        y = abs(np.random.normal(0))
-                        if res.startswith('-'):
-                            y*=-1.0
-                else:
-                    x_cmd, y_cmd = res
-                    x = abs(np.random.normal(0))
-                    y = abs(np.random.normal(0))
-                    if x_cmd.startswith("-"):
-                        x = -1.0*x
-                    if y_cmd.startswith("-"):
-                        y = -1.0*y
+                z = 0
+                x_flag, y_flag, z_flag = command.split(",")
+                while True : 
+                    x = abs(np.random.uniform(2, 10))
+                    if x_flag == "-x":
+                        x = -1*x
+                    
+                    y = abs(np.random.uniform(2, 10))
+                    if y_flag == "-y":
+                        y = -1*y
 
-                Rt_new, Rt_inv = add_limited_translate(pose, Q, Rt, x, y, w, h)
+                    z = abs(np.random.uniform(2, 10))
+                    if z_flag == "-z":
+                        z = -1*z
+                    Rt = np.eye(3,4,dtype=np.float32)
+                    Rt_inv = np.eye(3,4,dtype=np.float32)
+                    scaled_x = x
+                    scaled_y = y 
+                    scaled_z = z
+                    Rt = np.copy(Rt)
 
-                new_pose = fmath.add_Rt_to_mesh(Rt_new, pose)
-                pdata = {"image" : img, "name" : img_name , "S" : new_pose, "Rt_inv" : Rt_inv}
+                    Rt[0, -1] = scaled_x
+                    Rt[1, -1] = scaled_y
+                    Rt[2, -1] = scaled_z
+                    res = self.add_Rt_to_pts(Q, Rt, new_pose)
+                    if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] >= w)) or (np.any(res[:, 1] < 0) or np.any(res[:, 1] >= h))):
+                        continue
+                    else:
+                        break
+                Rt_inv[0, -1 ] = -scaled_x 
+                Rt_inv[1, -1 ] = -scaled_y
+                Rt_inv[2, -1 ] = -scaled_z
+                Rt_new = Rt
+                # Rt_new, Rt_inv = add_limited_translate(pose, Q, Rt, x, y, w, h)
+
+                
+                Rt_new_pose = fmath.add_Rt_to_mesh(Rt_new, new_pose)
+                pdata = {"image" : img, "name" : img_name , "S" : Rt_new_pose, "Rt_inv" : Rt_inv}
                 image_data.append(pdata)
+            
+            # ll = vis.draw_circle(self.add_Rt_to_pts(Q, np.eye(3,4, dtype=np.float32),  image_data[0]['S']), img, colors=(0,255,0))
+            # l = [vis.resize_img(ll, 400)] 
+             
+            
+            # for idata in image_data[1:]:
+            #     cimg  = vis.draw_circle(self.add_Rt_to_pts(Q, np.eye(3, 4 , dtype= np.float32),  idata['S']), img, colors=(255,0,0))
+            #     cimg2  = vis.draw_circle(self.add_Rt_to_pts(Q, idata['Rt_inv'],  idata['S']), cimg, colors=(0,255,0))
+            #     cimg = vis.resize_img(cimg2, 400)
+            #     l.append(cimg)
+                
+            # cimg = vis.concatenate_img(3,3, *l)
+            # vis.set_delay(0)
+            # vis.show("test", cimg)
             result_data.append(image_data)
 
 
 
-        def find_great_similarityGH_from_dataset(dataset, img_data, G, H):
+        def find_great_similarityGH_from_dataset(dataset, data, G, H):
             """
                 dataset : 2-d python array
             """
-            
-            picked_pose = img_data['S']
-            picked_pose_centroid = np.mean(pose, axis=0, keepdims=True)
-            centric_picked_pose = picked_pose - picked_pose_centroid
-            cloest_original_pose_index = []
+            import random
+            S_ij = data['S']
+            S_ij_center = np.mean(S_ij, axis=0, keepdims=True)
+            centered_S_ij = S_ij - S_ij_center
             losses_between_picked_pose_n_original_pose = []
-            for orig_index, (original_S_i , *_) in enumerate(dataset): # unpack first
-                picked_original_pose = original_S_i['S']
-                picked_original_pose_centroid = np.mean(pose, axis=0, keepdims= True)
-                centric_picked_original_pose = picked_original_pose - picked_original_pose_centroid
-                loss = np.sum(np.sqrt(np.sum((centric_picked_pose - centric_picked_original_pose) ** 2, axis=1)))
-                losses_between_picked_pose_n_original_pose.append([orig_index,loss])
+            for orig_index_i, data_S_o in enumerate(dataset) :
+                S_i_o = data_S_o[0]['S']
+                # Rt = data_S_o[0]['Rt_inv']
+                # S_i_o = add_rt(Rt, S_i_o)
+                S_i_o_center = np.mean(S_i_o, axis=0, keepdims= True)
+                centered_S_i_o = S_i_o - S_i_o_center
+                loss = np.sum(np.sqrt(np.sum((centered_S_ij - centered_S_i_o) ** 2, axis=1)))
+                losses_between_picked_pose_n_original_pose.append([orig_index_i,loss])
             sorted_losses_between_picked_pose_n_original_pose = sorted(losses_between_picked_pose_n_original_pose, key = lambda x : x[1]) # sorted by loss
             selected_G_list = sorted_losses_between_picked_pose_n_original_pose[:G]
             samples = []
+
             for iG, _ in selected_G_list:
                 # TODO is it include original shapes or not? I have no idea about that.
                 # currently I sample H from whole list that inlcude original shape S_o
@@ -1957,12 +2001,15 @@ class PreProp:
         init_pose_list = []
         for i_group_data_list in result_data:
             for data in i_group_data_list:
+                # truth = i_group_data_list[0]['S']
                 for init_pose in data["S_init"]:
                     img_list.append(data['name'])
                     S_list.append(data['S'])
+                    # S_list.append(truth)
                     Rt_inv_list.append(data['Rt_inv'])
                     init_pose_list.append(init_pose)
 
+                    
         # np.savez(os.path.join(train_data_path, "data.npz"), image=np.asarray(img_list), S=np.asarray(S_list), Rt_inv=np.asarray(Rt_inv), S_init=np.asarray(init_pose_list))
         np.save(os.path.join(train_data_path, "image"),img_list)
         np.save(os.path.join(train_data_path, "S"), S_list)

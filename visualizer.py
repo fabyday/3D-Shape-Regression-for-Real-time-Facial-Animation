@@ -204,7 +204,10 @@ g_key_manager = CvKey()
 
 
 def resize_img(img, width):
-    w, h, c = img.shape
+    if len(img.shape) == 3:
+        w, h, c = img.shape
+    else :
+        w, h = img.shape
     if w == width:
         return img
     ratio = width / w 
