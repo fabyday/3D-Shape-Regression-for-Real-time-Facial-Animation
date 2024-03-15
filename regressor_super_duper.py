@@ -3,7 +3,7 @@ import numpy as np
 import os
 os.environ['KMP_DUPLICATE_LIB_OK']='True'
 import logging
-logging.basicConfig(filename='reg_weak_logger.log',  level=logging.DEBUG)
+logging.basicConfig(filename='reg_regressor_Rt_weak_logger.log',  level=logging.DEBUG)
 
 import yaml 
 import cv2 
@@ -1315,15 +1315,16 @@ class TwoLevelBoostRegressor:
                 # aaa = proj(Q, M, cur_shape)
                 # im3 = vis.draw_circle(proj(Q, M, cur_shape), image, colors=(0,255,255))
                 # vis.show("test", vis.resize_img(vis.concatenate_img(1,3, vis.resize_img(im1, 600), vis.resize_img(im2, 600), vis.resize_img(im3, 600)), 1000))
-                regression_targets[i, ...] =  (S - cur_shape)
-                # regression_targets[i, ...] = add_to_pts(M, (S - cur_shape))
+                # regression_targets[i, ...] =  (S - cur_shape)
+                regression_targets[i, ...] = add_to_pts(M, (S - cur_shape))
                 # regression_targets[i, ...] = (rot@ (S - cur_shape).T).T
                 # rot_list.append(rot)
                 # rot_inv_list.append(np.linalg.inv(rot_list[i]))
 
             pred = weak_regressor.train(regression_targets, image_list, current_shapes, rot_list,rot_inv_list, M_sorted_list, self.mean_shape)
-            # for i, p in enumerate(pred):
-                # p[...] = (rot_inv_list[i] @p.T).T
+            
+            for i, p in enumerate(pred):
+                p[...] = add_to_pts(TwoLevelBoostRegressor.inverse_Rt(M), p)
                 # p[...] = (rot_inv_list[i] @p.T).T
             current_shapes += pred
             
@@ -1588,7 +1589,7 @@ if __name__ == "__main__":
     neutral_v = neutral_v[lmk_idx, :]
     reg = TwoLevelBoostRegressor(Q = Q, nuetral_v=neutral_v)
     reg.set_save_path("./fern_pretrained_data")
-    # reg.train(data, neutral_v, Ss, Rt_invs)
+    reg.train(data, neutral_v, Ss, Rt_invs)
     reg.load_model("./fern_pretrained_data")
     
     reg.predict(data[0]['color_img'], render = True)
