@@ -1937,7 +1937,7 @@ class PreProp:
             
             # ll = vis.draw_circle(self.add_Rt_to_pts(Q, np.eye(3,4, dtype=np.float32),  image_data[0]['S']), img, colors=(0,255,0))
             # l = [vis.resize_img(ll, 400)] 
-             
+            
             
             # for idata in image_data[1:]:
             #     cimg  = vis.draw_circle(self.add_Rt_to_pts(Q, np.eye(3, 4 , dtype= np.float32),  idata['S']), img, colors=(255,0,0))
@@ -1999,26 +1999,33 @@ class PreProp:
         S_list = [] 
         Rt_inv_list = []
         init_pose_list = []
+        S_index = 0
+        S_Rt_inv_index_list = []
         for i_group_data_list in result_data:
             for data in i_group_data_list:
-                # truth = i_group_data_list[0]['S']
+                S_list.append(data['S'])
+                Rt_inv_list.append(data['Rt_inv'])
                 for init_pose in data["S_init"]:
                     img_list.append(data['name'])
-                    S_list.append(data['S'])
-                    # S_list.append(truth)
-                    Rt_inv_list.append(data['Rt_inv'])
+                    S_Rt_inv_index_list.append(S_index)
+                    # S_list.append(data['S'])
+                    # Rt_inv_list.append(data['Rt_inv'])
                     init_pose_list.append(init_pose)
+                S_index += 1
+        
+        S_Rt_inv_index_list = np.array(S_Rt_inv_index_list).astype(np.uint)
 
-                    
         # np.savez(os.path.join(train_data_path, "data.npz"), image=np.asarray(img_list), S=np.asarray(S_list), Rt_inv=np.asarray(Rt_inv), S_init=np.asarray(init_pose_list))
         np.save(os.path.join(train_data_path, "image"),img_list)
         np.save(os.path.join(train_data_path, "S"), S_list)
         np.save(os.path.join(train_data_path, "Rt_inv"), Rt_inv_list)
+        np.save(os.path.join(train_data_path, "S_Rtinv_index_list"), S_Rt_inv_index_list)
         np.save(os.path.join(train_data_path, "S_init"), init_pose_list)
         
         np.save(osp.join(self.save_root_dir, "Q_list"), Q)
         meta_content = {"Q_location" : "Q_list.npy", 
                         "S_location": "S.npy",
+                        "S_Rtinv_index_list" : "S_Rtinv_index_list.npy",
                         "data_root" : train_data_dir_name,
                         "image_name_location": "image.npy",
                         "Rt_inv_location" : "Rt_inv.npy",
