@@ -215,8 +215,7 @@ def resize_img(img, width):
     img = cv2.resize(img, [int(new_h), int(width)])
     return img
 
-
-def put_text(img, caption, color, base_loc, font_face, font_scale, thickness, linetype, fit_bool = False):
+def put_text(img, caption, color, base_loc=(0,0), font_face = 1, font_scale=2, thickness=1, linetype=cv2.LINE_AA, fit_bool=False):
     t_size = cv2.getTextSize(caption, 2, fontScale=font_scale, thickness=thickness+2)
     base_loc_x, base_loc_y = base_loc
     wid = t_size[0][0]
@@ -230,6 +229,7 @@ def draw_circle(v, img, colors = (1.0,0.0,0.0), radius = 10, thickness=2):
     img = np.copy(img)
     for vv in v:
         cv2.circle(img, center=vv.astype(int), radius=radius, color=colors, thickness=thickness)
+        
     return img
 
 def draw_contour(img, lmk, new_contour, color = (0,0,255), line_color =(255,0,0), width = None, caption = "" ):
