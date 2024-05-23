@@ -23,7 +23,7 @@ import random
 
 import fmath
 np.set_printoptions(precision=3, suppress=True)
-
+np.random.seed(8888)
 lmk_idx = [
 1278,
 1272,
@@ -1849,6 +1849,12 @@ class PreProp:
         recent_Q_list_path = sorted(Q_list_paths, key=matcher)[-1]
         Q_list = np.load(recent_Q_list_path)
         Q = Q_list[0]
+        
+        regression_inner_contour_indices = np.load(osp.join("./predefined_face_weight", "regression_contour.npy"))
+        face_contour = self.contour['full_index']
+
+
+        
 
 
         result_data = []
@@ -1870,7 +1876,12 @@ class PreProp:
         user_specific_neutral = self.get_combine_model(neutral=neutral, ids=ids, expr=expr, w_i = self.id_weight, w_e= gen_zero_expression_weight)
         user_specific_expr = expr
         
-        neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, lmk_idx)
+        # neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, lmk_idx)
+        # new_lmks = np.concatenate([np.array(lmk_idx), regression_inner_contour_indices], axis=-1)
+        new_lmks = regression_inner_contour_indices.astype(np.uint)
+        neutral_bar, _, expr_bar = self.get_bars(neutral, ids, expr, new_lmks)
+        S_original_list = []
+
 
         def add_rt(Rt, v):
             return (Rt@np.concatenate([v, np.ones((len(v),1), dtype=np.float32)], axis=-1).T).T
@@ -1885,7 +1896,7 @@ class PreProp:
             pose = self.get_combine_bar_model(neutral_bar, None, expr_bar, None, w_e=expr_w)
             
             new_pose = add_rt(Rt, pose)
-            
+            S_original_list.append(new_pose)
             image_data = [{"image" : img, "name" : img_name , "S" : new_pose, "Rt_inv" : np.eye(3,4, dtype = np.float32)}]
 
             # cimg  = vis.draw_circle(self.add_Rt_to_pts(Q, Rt,  pose), img, colors=(255,0,0))
@@ -1976,7 +1987,24 @@ class PreProp:
             for iG, _ in selected_G_list:
                 # TODO is it include original shapes or not? I have no idea about that.
                 # currently I sample H from whole list that inlcude original shape S_o
-                samples += random.sample(dataset[iG] , k=H) # weight is same. no dups
+                ith_datagroup = dataset[iG]
+                # Input =data['S']
+                # img =data['image']
+                # ssss =ith_datagroup[0]['S']
+                # imim =ith_datagroup[0]['image']
+                
+                # ins = self.add_Rt_to_pts(Q, np.eye(3,4), Input)
+                # test = self.add_Rt_to_pts(Q, np.eye(3,4), ssss)
+                # a = vis.draw_circle(ins, img, (0,0,255), radius=10)
+                # b = vis.draw_circle(test, imim, (255,0,0), radius=10) 
+                # a = vis.resize_img(a, 600)
+                # b = vis.resize_img(b, 600)
+                # ab = vis.concatenate_img(1,2, a,b)
+                # vis.show("test", ab)
+                #without original shapes(data consist of only augmented step )
+                igrup_indice = list(range(1, len(ith_datagroup)))
+                samples += map(lambda col_idx : (iG, col_idx) , random.sample(igrup_indice, k=H)) # weight is same. no dups
+
             return samples
 
         result_data = copy.deepcopy(result_data)
@@ -1985,9 +2013,13 @@ class PreProp:
         for i, i_group_data_list  in enumerate(result_data):
             for j, data in enumerate(i_group_data_list):
                 GH_list = find_great_similarityGH_from_dataset(result_data, data, G, H)
-                data["S_init"] = [GH_item['S'] for GH_item in GH_list]
+                # data["S_init"] = [GH_item['S'] for GH_item in GH_list]
+                data["S_init"] = [GH_item for GH_item in GH_list]
 
 
+
+
+        S_original_list = np.array(S_original_list)
         # save all data to file. wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww
         meta = {"name" : "data", "location" : "data.npy"}
         train_data_dir_name = "train_dataset"
@@ -2010,13 +2042,17 @@ class PreProp:
                     S_Rt_inv_index_list.append(S_index)
                     # S_list.append(data['S'])
                     # Rt_inv_list.append(data['Rt_inv'])
-                    init_pose_list.append(init_pose)
+                    # init_pose_list.append(init_pose)
+                    i, j = init_pose
+                    sizet = len(i_group_data_list)
+                    init_pose_list.append(i*sizet + j)
                 S_index += 1
         
         S_Rt_inv_index_list = np.array(S_Rt_inv_index_list).astype(np.uint)
 
         # np.savez(os.path.join(train_data_path, "data.npz"), image=np.asarray(img_list), S=np.asarray(S_list), Rt_inv=np.asarray(Rt_inv), S_init=np.asarray(init_pose_list))
         np.save(os.path.join(train_data_path, "image"),img_list)
+        np.save(os.path.join(train_data_path, "S_original"), S_original_list)
         np.save(os.path.join(train_data_path, "S"), S_list)
         np.save(os.path.join(train_data_path, "Rt_inv"), Rt_inv_list)
         np.save(os.path.join(train_data_path, "S_Rtinv_index_list"), S_Rt_inv_index_list)
@@ -2025,6 +2061,7 @@ class PreProp:
         np.save(osp.join(self.save_root_dir, "Q_list"), Q)
         meta_content = {"Q_location" : "Q_list.npy", 
                         "S_location": "S.npy",
+                        "S_original_location": "S_original.npy",
                         "S_Rtinv_index_list" : "S_Rtinv_index_list.npy",
                         "data_root" : train_data_dir_name,
                         "image_name_location": "image.npy",
