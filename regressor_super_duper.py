@@ -222,11 +222,11 @@ class FirstLevelFern:
 
 
         # see detail : https://www.microsoft.com/en-us/research/wp-content/uploads/2013/01/Face-Alignment-by-Explicit-Shape-Regression.pdf
-        full_index, eye, contour, mouse, eyebrow, nose  = dl.load_ict_landmark("./ict_lmk_info.yaml")
-        left_pupil = np.mean(samples[eye['left_eye']['full_index'], :]  , axis=0)
-        right_pupil = np.mean(samples[eye['right_eye']['full_index'], :], axis=0)
-        kappa = np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3  # 
-
+        # full_index, eye, contour, mouse, eyebrow, nose  = dl.load_ict_landmark("./ict_lmk_info.yaml")
+        # left_pupil = np.mean(samples[eye['left_eye']['full_index'], :]  , axis=0)
+        # right_pupil = np.mean(samples[eye['right_eye']['full_index'], :], axis=0)
+        # kappa = np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3  # 
+        kappa = 0.01 # For testing
         
         
         # samples2d = (Q@(R@samples.T+t)).T
@@ -2074,10 +2074,10 @@ if __name__ == "__main__":
     reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     # reg = TwoLevelBoostRegressor(Q = Q,T=10, K=10,beta=1000, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     reg.set_save_path("./fern_pretrained_data")
-    reg.train(data, neutral_v, Ss, Rt_invs)
+    # reg.train(data, neutral_v, Ss, Rt_invs)
     reg.load_model("./fern_pretrained_data")
     
-    reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx)   
+    # reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx)   
     reg.predict(data[-1]['color_img'], render = True, lmk_idx = lmk_new_idx)   
 
 
