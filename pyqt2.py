@@ -266,6 +266,22 @@ class Image:
     def __init__(self):
         pass 
 
+    async def load(self, pth):
+        self.m_image = cv2.imread(pth)
+        self.m_name, self.m_ext = osp.splitext(osp.basename(pth))
+    
+    async def save(self, pth):
+        cv2.imwrite(self.m_iamge, pth)
+
+    @property 
+    def image(self):
+        return self.m_image 
+    
+    @image.setter
+    def image(self, image):
+        self.m_image = image
+    
+
     @property
     def extension(self):
         return self.extension
@@ -445,25 +461,25 @@ class InspectorWidget(QWidget):
 
 
     # event emitter
-    def next():
+    def next(self):
         pass 
 
-    def prev():
+    def prev(self):
         pass
 
-    def detect():
+    def detect(self):
         pass
 
-    def save_data():
+    def save_data(self):
         pass
 
-    def save_data():
+    def save_data(self):
         pass 
 
-    def save_data_all():
+    def save_data_all(self):
         pass 
 
-    def detect_all_lmk_from_entire_images():
+    def detect_all_lmk_from_entire_images(self):
         pass 
     
     def open_root_dir_and_load(self, pth_name):

@@ -717,7 +717,8 @@ class InspectorWidget(QWidget):
             lab = self.pp.get_status_show_message()
             try:
                 j_id = int(time.time())
-                self.jobs[j_id] =False                     
+                self.jobs[j_id] =False                   
+                print("len(self.program_data)", len(self.program_data))  
                 self.worker.save_data(j_id, list(range(len(self.program_data))))
                     # self.signal.call_save_signal(i)
             except:

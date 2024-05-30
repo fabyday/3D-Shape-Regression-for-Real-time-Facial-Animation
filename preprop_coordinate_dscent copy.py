@@ -1909,17 +1909,17 @@ class PreProp:
                 z = 0
                 x_flag, y_flag, z_flag = command.split(",")
                 while True : 
-                    x = abs(np.random.uniform(2, 10))
+                    x = abs(np.random.uniform(0.1, 10))
                     if x_flag == "-x":
-                        x = -1*x
+                        x = -1.0*x
                     
-                    y = abs(np.random.uniform(2, 10))
+                    y = abs(np.random.uniform(0.1, 10))
                     if y_flag == "-y":
-                        y = -1*y
+                        y = -1.0*y
 
-                    z = abs(np.random.uniform(2, 10))
+                    z = abs(np.random.uniform(0.1, 10))
                     if z_flag == "-z":
-                        z = -1*z
+                        z = -1.0*z
                     Rt = np.eye(3,4,dtype=np.float32)
                     Rt_inv = np.eye(3,4,dtype=np.float32)
                     scaled_x = x
@@ -1931,7 +1931,11 @@ class PreProp:
                     Rt[1, -1] = scaled_y
                     Rt[2, -1] = scaled_z
                     res = self.add_Rt_to_pts(Q, Rt, new_pose)
-                    if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] >= w)) or (np.any(res[:, 1] < 0) or np.any(res[:, 1] >= h))):
+                    
+                    # yououo = vis.draw_circle(res, img, (0,0,255), radius=10, thickness=2)
+                    # yououo = vis.resize_img(yououo, 800)
+                    # vis.show("title", yououo)
+                    if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] >= w - 1)) or (np.any(res[:, 1] < 0) or np.any(res[:, 1] >= h - 1))):
                         continue
                     else:
                         break
@@ -2033,6 +2037,11 @@ class PreProp:
         init_pose_list = []
         S_index = 0
         S_Rt_inv_index_list = []
+
+        debugging_image_root_path = "./preprop_debug_image"
+        if not osp.exists(debugging_image_root_path):
+            os.makedirs(debugging_image_root_path)
+
         for i_group_data_list in result_data:
             for data in i_group_data_list:
                 S_list.append(data['S'])
@@ -2040,12 +2049,34 @@ class PreProp:
                 for init_pose in data["S_init"]:
                     img_list.append(data['name'])
                     S_Rt_inv_index_list.append(S_index)
-                    # S_list.append(data['S'])
-                    # Rt_inv_list.append(data['Rt_inv'])
-                    # init_pose_list.append(init_pose)
+                    
                     i, j = init_pose
                     sizet = len(i_group_data_list)
                     init_pose_list.append(i*sizet + j)
+
+                    # for debugging purpose
+                    imim = vis.draw_circle( self.add_Rt_to_pts(Q, np.eye(3,4), data['S']), data['image'], (0,0,255), radius=2, thickness=10)
+                    imim = vis.draw_circle(self.add_Rt_to_pts(Q,np.eye(3,4), result_data[i][j]['S']), imim, (255,0,0), radius=2, thickness=10)
+                    imim1 = vis.resize_img(imim, 800)
+                    imim = vis.draw_circle( self.add_Rt_to_pts(Q, data['Rt_inv'], data['S']), data['image'], (0,0,255), radius=2, thickness=10)
+                    imim = vis.draw_circle(self.add_Rt_to_pts(Q, data['Rt_inv'], result_data[i][j]['S']), imim, (255,0,0), radius=2, thickness=10)
+                    imim2 = vis.resize_img(imim, 800)
+                    imim = vis.concatenate_img(1,2, imim1, imim2)
+                    i = 0
+                    while True:
+                        name_path = osp.join(debugging_image_root_path, data['name']+("_0" if i == 0 else "_"+str(i))+".jpg")
+                        if osp.exists(name_path):
+                            i += 1
+                            continue
+                        else:
+                            vis.save(name_path, imim)
+                            break
+
+                        
+                    
+                    # S_list.append(data['S'])
+                    # Rt_inv_list.append(data['Rt_inv'])
+                    # init_pose_list.append(init_pose)
                 S_index += 1
         
         S_Rt_inv_index_list = np.array(S_Rt_inv_index_list).astype(np.uint)

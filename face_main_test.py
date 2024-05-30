@@ -234,7 +234,7 @@ class ImageCollection():
                 img_path = osp.join(image_dir, img_key+self.ext)
                 expr_image_collection[img_key] = Image(self, img_path, self.lmk_size, img_key, expr_key, lazy_load=lazy_load)
                 self.img_data_list.append(expr_image_collection[img_key])
-
+        print("test", len(self.img_data_list))
     
     def load_predictor(self, path=None):
         import dlib
