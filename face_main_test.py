@@ -6,6 +6,7 @@ import cv2
 import numpy as np 
 import glob, copy
 
+import dlib
 
 import os 
 import os.path as osp
@@ -116,7 +117,6 @@ class Image:
     def is_landmark_detected(self):
         return self.lmk_detected
     def calc_lankmark_from_dlib(self, detector, predictor, redetect=False):
-        import dlib
         self.load()
         redetect = self.redetect_flag 
         self.redetect_flag = False
@@ -148,8 +148,9 @@ class Image:
                     if img.is_landmark_detected():
                         self.lmk = copy.deepcopy(img.lmk)
                         self.lmk_detected = True
-                        break
-                self.lmk_detected = False
+                    else:
+                        self.lmk_detected = False
+                # self.lmk_detected = False
             return True
         return False
     

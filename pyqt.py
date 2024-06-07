@@ -11,6 +11,7 @@ import os
 import cv2
 import yaml
 import face_main_test as ff
+import debugpy
 
 class Data:
     def __init__(self, images_meta, lmk_meta):
@@ -190,7 +191,8 @@ class Worker(QThread):
             self.create_status_bar.emit(len(index_list))
             for i, index in enumerate(index_list):
                 if not cancel_flag:
-                    self.program_data.save(index_list)
+                    # self.program_data.save(index_list)
+                    self.program_data.save(index)
                     finished_index_list.append(i)
                     self.progress.emit(i + 1, self.program_data[index].img_name + " finished.")
                 else:

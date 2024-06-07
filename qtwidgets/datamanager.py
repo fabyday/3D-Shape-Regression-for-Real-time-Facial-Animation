@@ -34,4 +34,31 @@ class DataManager:
 
         self.metadata = loaded_data
 
-            
+
+class DataCollection:
+    def __init__(self):
+        self.m_data_items = [] 
+        
+
+
+class Data:
+    def __init__(self):
+        self.m_image  = None 
+        self.m_landmark = None 
+        self.m_category  = None 
+
+
+
+
+
+
+class DataLoaderFactory:
+    def __init__(self):
+        pass 
+
+
+
+    @staticmethod
+    def load(meta):
+        pass 
+

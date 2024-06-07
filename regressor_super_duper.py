@@ -239,7 +239,8 @@ class FirstLevelFern:
         disp = np.zeros((P,3), dtype=np.float32)
         idx_list = list(range(len(disp)))
         num_P = P
-        disp = np.random.uniform(-kappa, kappa, size = (num_P, 3))
+        disp = np.random.normal(0, kappa, size = (num_P, 3))
+        # disp = np.random.uniform(-kappa, kappa, size = (num_P, 3))
         # while True :
         #     disp[idx_list, :] = np.random.uniform(-kappa, kappa, size = (num_P, 3))#TODO
         #     # flag, l = FirstLevelFern.test_outofbound_samples(Q, Ms, disp, w, h)
@@ -341,10 +342,10 @@ class FirstLevelFern:
         
         #################### comment below if you stop visualizer.
         # anchor_pts = proj(Q, M, S_init_pose)
-        # anchor_pts[anchor_pts[:, 0] < 0,0] = 0
-        # anchor_pts[anchor_pts[:, 0] >= w,0] = w -1 
-        # anchor_pts[anchor_pts[:, 1] < 0,1] = 0
-        # anchor_pts[anchor_pts[:, 1] >= h,1] = h -1 
+        # # anchor_pts[anchor_pts[:, 0] < 0,0] = 0
+        # # anchor_pts[anchor_pts[:, 0] >= w,0] = w -1 
+        # # anchor_pts[anchor_pts[:, 1] < 0,1] = 0
+        # # anchor_pts[anchor_pts[:, 1] >= h,1] = h -1 
 
         # vis.set_delay(1000)
         # # test for draw
@@ -353,7 +354,7 @@ class FirstLevelFern:
         # im = np.copy(Image)
         # im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
 
-        # im3 = vis.draw_circle(proj(Q, M, S_init_pose),im, colors=(0,0,255),radius=1)
+        # im3 = vis.draw_circle(proj(Q, M, S_init_pose),im, colors=(0,0,255),radius=1, thickness=2)
         # im3 = vis.draw_circle(pts_2d ,im, colors=(255,0,0), radius=1)
         # im3 = vis.draw_pts_mapping(im3, anchor_pts[nearset_index, :], pts_2d, (0,255,255), thickness=1)
         # im3 = vis.resize_img(im3, 800)
@@ -1654,7 +1655,9 @@ class TwoLevelBoostRegressor:
         iia1 = vis.draw_circle(mea_v1, image, colors=(0,0,1), radius=1)
         iia2 = vis.draw_circle(mea_v2, image, colors=(1,0,0), radius=1)
         iia = vis.concatenate_img(1,2,iia1,iia2)
+        vis.set_delay(100)
         vis.show("test", iia)
+
         # np.save(os.path.join(self.save_path, "S"), self.S_list)
         global multithread_flag 
         pre_init_weak_f = functools.partial(FirstLevelFern.pre_initialize, data_size = N, lmk_size = self.lmk_size)
@@ -1722,7 +1725,7 @@ class TwoLevelBoostRegressor:
             vis.save(osp.join(path, str(i)+".png"), im)
 
 
-    def predict(self, o, init_num = 15, prev_data = None, render= False, lmk_idx=None):
+    def predict(self, o, init_num = 15, prev_data = None, render= False, lmk_idx=None, Q = None ):
         """
          o : list of images or image 
         """
@@ -1753,7 +1756,7 @@ class TwoLevelBoostRegressor:
             #         vis.set_delay(10)
             #         vis.show("result", im)
             #         prev_data = (Rtinv[:, :3] @data.T + Rtinv[:, -1, None]).T
-            data, new_Rt =self._predict(o, init_num, prev_frame_S=prev_data, clmk_idx = lmk_idx)
+            data, new_Rt =self._predict(o, init_num, prev_frame_S=prev_data, clmk_idx = lmk_idx,  Q = Q if Q is not None else None)
             # Rtinv = TwoLevelBoostRegressor.inverse_Rt(new_Rt)
             Rtinv = new_Rt
             if render :
@@ -1832,8 +1835,10 @@ class TwoLevelBoostRegressor:
 
         return sorted_ss[:candidate_num]
 
-    def _predict(self, img, init_num, prev_frame_S = None, clmk_idx = None):
+    def _predict(self, img, init_num, prev_frame_S = None, clmk_idx = None, Q = None):
         vis.set_delay(1000)
+        if Q is not None :
+            self.Q = Q
         ####    for testing 
         self.mean_shape = np.zeros_like(self.S_list[0])
         # S_list N x K x 3
@@ -1874,9 +1879,9 @@ class TwoLevelBoostRegressor:
 
             if clmk_idx is None :
                 clmk_idx = lmk_idx
-            # im = vis.draw_circle(prev_frame_S2d, img, colors=(0,0,255))
-            # im = vis.resize_img(im, 1000)
-            # vis.show(title="test",img=im)
+            im = vis.draw_circle(prev_frame_S2d, img, colors=(0,0,255))
+            im = vis.resize_img(im, 1000)
+            vis.show(title="test",img=im)
             # prev_frame_S, new_Rt = self.refine_3d_lmk(prev_frame_S2d, img=img, lmk_idx=lmk_idx)
             # prev_frame_S2d = prev_frame_S2d[lmk_without_contour_idx, :]
             prev_frame_S, new_Rt = self.refine_3d_lmk(prev_frame_S2d, img=img, shape_lmk_idx=clmk_idx)
@@ -1967,7 +1972,8 @@ class TwoLevelBoostRegressor:
             # cur_pose = (new_Rt@cur_pose.T).T
             # im = vis.draw_circle(proj(self.Q, combined_Rt[:3,:], cur_pose), im, (0,255,0))
 
-            for weak_regressor in tqdm.tqdm(self.weak_regressors, "weak"):
+            # for weak_regressor in tqdm.tqdm(self.weak_regressors, "weak"):
+            for weak_regressor in self.weak_regressors:
                 # cur_pose = weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = InvRt, Q = self.Q)
                 cur_pose += weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = inv_RR[:3,:], Q = self.Q)
                 # pred = weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = combined_Rt[:3,:], Q = self.Q)
@@ -2085,28 +2091,44 @@ if __name__ == "__main__":
     # neutral_v = neutral_v[lmk_idx, :]
     neutral_v = neutral_v[lmk_new_idx, :]
     # reg = TwoLevelBoostRegressor(Q = Q,Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
-    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=100)
+    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=200)
     # reg = TwoLevelBoostRegressor(Q = Q,T=10, K=10,beta=1000, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     reg.set_save_path("./fern_pretrained_data")
-    reg.train(data, neutral_v, Ss, Rt_invs)
+    # reg.train(data, neutral_v, Ss, Rt_invs)
     reg.load_model("./fern_pretrained_data")
-    
-    prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx)
-    ida= np.eye(3,4)
+    prev_data = None 
+    while True:
+        prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+        ida= np.eye(3,4)
 
-    dt = proj(Q, ida, prev_data)
-    frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
-    vis.show("VideoFrame", frame)
+        dt = proj(Q, ida, prev_data)
+        frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
+        vis.show("VideoFrame", frame)
 
     capture = cv2.VideoCapture(0)
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
     prev_data = None 
     ida= np.eye(3,4)
+    #https://www.researchgate.net/figure/Kinect-camera-intrinsic-parameters-the-resolution-and-sensor-size-information-from-36_tbl1_321354490
+    sensor_size = 3.1 * 0.001 # um
+    fov_h = np.deg2rad(70/2.0)
+    fov_v = np.deg2rad(60/2.0)
+    
+    # mm
+    focal_length_x = 3.2813/sensor_size
+    focal_length_y = 3.5157/sensor_size
+    #pixel
+    principal_x = 965.112
+    principal_y = 583.267
+    width_ratio = 640/1920
+
+    kinect_Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
+    kinect_Q[:-1, :] *=width_ratio
     while cv2.waitKey(33) < 0:
         ret, frame = capture.read()
         frame = vis.resize_img(frame, 640)
-        prev_data = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx)
+        prev_data = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q)
         dt = proj(Q, ida, prev_data)
         frame = vis.draw_circle(dt, frame, colors=(0,0,255), radius=1, thickness=3)
         cv2.imshow("VideoFrame", frame)
