@@ -18,13 +18,13 @@ class BaseItemMeta():
         pass 
 
     def unique_id(self):
-        return "1234"
+        raise NotImplementedError("Not implemented unique_id method")
     
     def serialize(self):
-        pass
+        raise NotImplementedError("Not implemented serialize method")
 
     def deserialize(self):
-        pass
+        raise NotImplementedError("Not implemented deserialize method")
 
 
 class NotCompatibleExtension(Exception):
@@ -36,12 +36,12 @@ class ImageExtensionEnum(enum.Enum):
     PNG =  "PNG"
 
 
-
+#forward decl
 class Category:
     pass
-
 class CategoryCollection():
     pass
+
 class CategoryCollection():
 
     class CategoryCollectionIterator():
@@ -61,6 +61,7 @@ class CategoryCollection():
                 if self.cur_idx >= self.m_length:
                     raise StopIteration()
                 self.m_cur_sub_iterator = iter(self.m_ref_collection_obj.items[self.cur_idx])
+
     class CategoryAlreadyExistsException(Exception):
         pass
 
@@ -94,6 +95,7 @@ class CategoryCollection():
     
     def __getitem__(self, key):
         pass
+
     def __iter__(self):
         CategoryCollection.CategoryCollectionIterator(self)
 
@@ -112,7 +114,7 @@ class Category:
         
         def __next__(self):
             if self.cur_idx < self.m_length:
-                res = self.m_ref_collection_obj.items[self.cur_idx]
+                _key_id, res = self.m_ref_collection_obj.m_items[self.cur_idx]
             else :
                 raise StopIteration()
             
@@ -401,7 +403,7 @@ class ImageMeta(BaseMeta):
         
     def __iter__(self):
         return iter(self.m_category_collection)
-    
+
     def keys(self):
         if self.is_loaded:
             return self.raw_data['meta']['images_name'].keys() 
