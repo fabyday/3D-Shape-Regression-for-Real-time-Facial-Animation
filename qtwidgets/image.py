@@ -1,10 +1,10 @@
 import cv2 
 import numpy as np
 from . import metadata
-class Category(self):
+class Category():
     def __init__(self):
         self.m_category_name = ""
-        
+
 
 class Image :
     def __init__(self):
@@ -54,10 +54,6 @@ class Image :
     def category(self, name):
         self.m_category = name
     
-class ImageCollection():
-    def __init__(self):
-        pass 
-
 
 
 class ImageLoaderFactory():

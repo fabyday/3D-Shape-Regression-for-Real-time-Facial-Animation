@@ -319,28 +319,8 @@ class ProgramContext:
         self.m_input_meta_object = None 
         self.m_output_meta_object = None 
         self.m_landmark_meta_object = None 
-
         self.m_image_collection_object = None 
 
-class ImageCollection():
-    def __init__(self):
-        pass
-
-
-
-
-
-
-    def save_data_by_name():
-        pass 
-
-
-    def save_data_by_index():
-        pass 
-
-
-    def save_data_by_group():
-        pass
 
 
 class Worker(QThread):

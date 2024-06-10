@@ -38,7 +38,28 @@ class DataManager:
 class DataCollection:
     def __init__(self):
         self.m_data_items = [] 
-        
+
+
+class ImageCollection():
+    def __init__(self):
+        pass
+
+
+
+
+
+
+    def save_data_by_name():
+        pass 
+
+
+    def save_data_by_index():
+        pass 
+
+
+    def save_data_by_group():
+        pass
+
 
 
 class Data:
