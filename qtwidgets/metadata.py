@@ -46,10 +46,11 @@ class CategoryCollection():
 
     class CategoryCollectionIterator():
         def __init__(self, collection_obj : CategoryCollection):
+            print((collection_obj.keys()))
             self.m_length = len(collection_obj.keys())
             self.cur_idx = 0
             self.m_ref_collection_obj = collection_obj
-            self.m_cur_sub_iterator = iter(self.m_ref_collection_obj.items[self.cur_idx][-1])
+            self.m_cur_sub_iterator = iter(self.m_ref_collection_obj[self.cur_idx])
         def __iter__(self):
             return self
         
@@ -73,7 +74,7 @@ class CategoryCollection():
 
     def append_category(self, category_obj: Category):
         category_item = self.m_categories.get(category_obj.m_category_name, None)
-        if category_item is None :
+        if category_item is not None :
             raise CategoryCollection.CategoryAlreadyExistsException("same name of category is already exists in collection")
         self.m_categories[category_obj.m_category_name] = category_obj
 
@@ -91,10 +92,14 @@ class CategoryCollection():
             cat.deserialize(item)            
 
     def keys(self):
-        self.m_categories.keys()
+        return self.m_categories.keys()
     
-    def __getitem__(self, key):
-        pass
+    def __getitem__(self, key_o_idx):
+        if isinstance( key_o_idx, str):
+            return self.m_categories[key_o_idx]
+        elif isinstance(key_o_idx, int):
+            return self.m_categories.items()[key_o_idx][-1]
+
 
     def __iter__(self):
         CategoryCollection.CategoryCollectionIterator(self)
@@ -157,7 +162,7 @@ class Category:
         for data in raw_data_list:
             obj = self.m_cls()
             obj.deserialize(data)
-            self.m_items[obj.unique_id](obj)
+            self.m_items[obj.unique_id]=obj
         
 
 
@@ -247,11 +252,14 @@ class BaseMeta:
             raise BaseMeta.RawDataNotLoadedException("it is not meta file and directory where not contain meta file")
         with open(meta_path, "r") as fp:
             self.m_raw_data = yaml.load(fp, yaml.FullLoader)
-        self.m_location = meta_path
-        self.m_raw_data_loaded = True
-        self.m_category_collection.deserialize(self.data(self.get_category_data_key()))
-        if not (self.meta_type == self.m_raw_data['meta']['meta_type']):
+        
+        if not (self.meta_type == self.m_raw_data['meta'].get('meta_type', self.meta_type)): # if not exists meta_type skip 
             raise BaseMeta.MetaTypeNotCompatibleException("Meta type is Not compatible")
+        else:
+            self.m_location = meta_path
+            self.m_raw_data_loaded = True
+            self.m_category_collection.deserialize(self.data(self.get_category_data_key()))
+
         return self.m_raw_data_loaded
 
     def write_meta(self, path = None):
@@ -279,7 +287,7 @@ class BaseMeta:
         splited_keys = key.split(".")
         cur_data = self.m_raw_data
         for key in splited_keys:
-            self.m_raw_data[key]
+            cur_data = cur_data[key]
         return cur_data
 
 
@@ -298,7 +306,7 @@ class LandmarkMeta(BaseMeta):
         @property 
         def name(self):
             return self.m_name
-        
+        @property
         def unique_id(self):
             return self.name
 
@@ -354,7 +362,7 @@ class LandmarkMeta(BaseMeta):
 
 class ImageMeta(BaseMeta):
     META_NAME = "Image"
-
+    CATEGORY_DATA_KEY = "meta.images_name"
     class ImageItemMeta(BaseItemMeta):
         def __init__(self):
             self.m_parent_category = None
@@ -367,7 +375,7 @@ class ImageMeta(BaseMeta):
         @name.setter
         def name(self, name):
             self.m_name = name
-
+        @property
         def unique_id(self):
             return self.name
         
@@ -390,7 +398,6 @@ class ImageMeta(BaseMeta):
 
     def open_meta(self, path):
         super().open_meta(path)
-        self.m_category_collection.deserialize(self.m_raw_data['meta']['images_name'])
 
 
     def write_meta(self, path = None):

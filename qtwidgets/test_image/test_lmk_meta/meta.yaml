@@ -1,0 +1,118 @@
+meta:
+  file_ext : ".JPG"
+  images_root : "D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/images/all_in_one/expression"
+  images_name:
+    brow_raise:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0066_lmk.txt
+      name: GOPR0066
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0068_lmk.txt
+      name: GOPR0068
+    cheek_blowing:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0091_lmk.txt
+      name: GOPR0091
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0093_lmk.txt
+      name: GOPR0093
+    chin_raise:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0079_lmk.txt
+      name: GOPR0079
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0080_lmk.txt
+      name: GOPR0080
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0081_lmk.txt
+      name: GOPR0081
+    disgust:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0069_lmk.txt
+      name: GOPR0069
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0071_lmk.txt
+      name: GOPR0071
+    eyes_close:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0095_lmk.txt
+      name: GOPR0095
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0097_lmk.txt
+      name: GOPR0097
+    grin:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0054_lmk.txt
+      name: GOPR0054
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0055_lmk.txt
+      name: GOPR0055
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0056_lmk.txt
+      name: GOPR0056
+    jaw_left:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0101_lmk.txt
+      name: GOPR0101
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0102_lmk.txt
+      name: GOPR0102
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0103_lmk.txt
+      name: GOPR0103
+    jaw_right:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0098_lmk.txt
+      name: GOPR0098
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0099_lmk.txt
+      name: GOPR0099
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0100_lmk.txt
+      name: GOPR0100
+    lip_funnel:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0088_lmk.txt
+      name: GOPR0088
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0089_lmk.txt
+      name: GOPR0089
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0090_lmk.txt
+      name: GOPR0090
+    lip_pucker:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0085_lmk.txt
+      name: GOPR0085
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0087_lmk.txt
+      name: GOPR0087
+    mouse_oepn:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0057_lmk.txt
+      name: GOPR0057
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0059_lmk.txt
+      name: GOPR0059
+    mouth_stretch:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0063_lmk.txt
+      name: GOPR0063
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0064_lmk.txt
+      name: GOPR0064
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0065_lmk.txt
+      name: GOPR0065
+    neutral_face:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0039_lmk.txt
+      name: GOPR0039
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0040_lmk.txt
+      name: GOPR0040
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0041_lmk.txt
+      name: GOPR0041
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0043_lmk.txt
+      name: GOPR0043
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0044_lmk.txt
+      name: GOPR0044
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0046_lmk.txt
+      name: GOPR0046
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0047_lmk.txt
+      name: GOPR0047
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0048_lmk.txt
+      name: GOPR0048
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0050_lmk.txt
+      name: GOPR0050
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0051_lmk.txt
+      name: GOPR0051
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0052_lmk.txt
+      name: GOPR0052
+    smile:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0104_lmk.txt
+      name: GOPR0104
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0106_lmk.txt
+      name: GOPR0106
+    squeeze_left_eye:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0072_lmk.txt
+      name: GOPR0072
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0073_lmk.txt
+      name: GOPR0073
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0075_lmk.txt
+      name: GOPR0075
+    squeeze_right_eye:
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0076_lmk.txt
+      name: GOPR0076
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0077_lmk.txt
+      name: GOPR0077
+    - landmark: D:/lab/2022/mycode/3D-Shape-Regression-for-Real-time-Facial-Animation/landmark\GOPR0078_lmk.txt
+      name: GOPR0078
