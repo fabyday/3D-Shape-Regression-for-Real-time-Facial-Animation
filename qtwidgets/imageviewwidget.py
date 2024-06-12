@@ -13,10 +13,6 @@ import yaml
 from . import qtthread
 from qtwidgets import metadata
 
-class ImageClassWidget():
-    pass
-
-
 class ImageViewWidget(QGraphicsView):
     def __init__(self, program_data: metadata.DataManager, worker : qtthread.Worker):
 

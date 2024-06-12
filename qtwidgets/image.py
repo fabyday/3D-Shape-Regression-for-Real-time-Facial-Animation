@@ -15,7 +15,7 @@ class Image :
         self.m_image = None 
         self.m_location = location
         self.m_extension = extension
-        self.name = ""
+        self.m_name = ""
         self.m_width  = 0 
         self.m_height = 0
         self.m_lazy_load_flag  = lazy_load
@@ -27,11 +27,23 @@ class Image :
     
     @image.setter
     def image(self, image : np.ndarray):
+        if len(image.shape) == 3 :
+            h, w, _ = image.shape
+
+        else :
+            h, w  = image.shape 
+        self.m_width = w 
+        self.m_height = h
         self.m_image = image
 
     def _load(self):
         if self.m_image is None :
-            return cv2.imread(self.name + self.m_extension.value)        
+            self.m_image = cv2.imread(self.name + self.m_extension.value)
+            if len(self.m_image.shape) == 3 :
+                h, w, _ = self.m_image.shape
+            else :
+                h, w  = self.m_image.shape 
+            return self.m_image
         else:
             return self.m_image
 
@@ -45,12 +57,12 @@ class Image :
 
     @property
     def name(self):
-        return self.name
+        return self.m_name
 
 
     @name.setter
     def name(self, name :str):
-        self.name = name
+        self.m_name = name
         
 
     @property
@@ -91,15 +103,24 @@ class ImageLoaderFactory():
     @staticmethod
     def load_from_image_meta(meta_info : metadata.ImageMeta, lazy_load_flag : bool = True):
         ext = meta_info.extension
+        print(ext)
         location = meta_info.file_location
         for info in meta_info:
             img_obj = Image(location = location, extension=ext, lazy_load=lazy_load_flag)
-            img_obj.name = info.m_name
+            img_obj.name = info.name
+            img_obj.category = info.category
             img_obj.load()
     
     @staticmethod
     def load_from_landmark_meta(meta_info : metadata.LandmarkMeta, lazy_load_flag : bool = True):
-        pass
+        ext  = meta_info.extension
+        location = meta_info.image_location
+        for info in meta_info:
+            img_obj = Image(location = location, extension=ext, lazy_load=lazy_load_flag)
+            img_obj.name = info.m_name
+            img_obj.load()
+
+
         
 
 
@@ -113,4 +134,9 @@ if __name__ == "__main__":
     print(os.path.join(os.path.dirname(__file__), meta_root))
     img_meta.open_meta(os.path.join(os.path.dirname(__file__), meta_root))
     image_list = ImageLoaderFactory.load(img_meta)
+    print("pn")
+    print("lmk")
+    lmk_meta = metadata.LandmarkMeta()
+    print(os.path.join(os.path.dirname(__file__), meta_root, "test_lmk_meta"))
+    lmk_meta.open_meta(os.path.join(os.path.dirname(__file__), meta_root, "test_lmk_meta"))
 

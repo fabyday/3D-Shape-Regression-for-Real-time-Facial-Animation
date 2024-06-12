@@ -12,7 +12,6 @@ import cv2
 import yaml
 
 
-
 class Worker(QThread):
     def __init__(self):
         self.jobs = []

@@ -10,7 +10,8 @@ def is_meta_file(path):
         return True 
     return False
 
-
+class Category:
+    pass 
 class BaseItemMeta():
     class ItemMetaKeyError(Exception):
         pass
@@ -27,13 +28,21 @@ class BaseItemMeta():
         raise NotImplementedError("Not implemented deserialize method")
 
 
+    @property
+    def category(self):
+        return self.m_parent_category
+    
+    @category.setter
+    def category(self, category : Category):
+        self.m_parent_category = category
+
 class NotCompatibleExtension(Exception):
     pass 
 
 class ImageExtensionEnum(enum.Enum):
-    JPG =  "JPG"
-    JPEG = "JPEG"
-    PNG =  "PNG"
+    JPG =  ".JPG"
+    JPEG = ".JPEG"
+    PNG =  ".PNG"
 
 
 #forward decl
@@ -46,7 +55,6 @@ class CategoryCollection():
 
     class CategoryCollectionIterator():
         def __init__(self, collection_obj : CategoryCollection):
-            print((collection_obj.keys()))
             self.m_length = len(collection_obj.keys())
             self.cur_idx = 0
             self.m_ref_collection_obj = collection_obj
@@ -61,7 +69,8 @@ class CategoryCollection():
                 self.cur_idx += 1
                 if self.cur_idx >= self.m_length:
                     raise StopIteration()
-                self.m_cur_sub_iterator = iter(self.m_ref_collection_obj.items[self.cur_idx])
+                self.m_cur_sub_iterator = iter(self.m_ref_collection_obj[self.cur_idx])
+                return next(self.m_cur_sub_iterator)
 
     class CategoryAlreadyExistsException(Exception):
         pass
@@ -98,11 +107,12 @@ class CategoryCollection():
         if isinstance( key_o_idx, str):
             return self.m_categories[key_o_idx]
         elif isinstance(key_o_idx, int):
-            return self.m_categories.items()[key_o_idx][-1]
+            key = list(self.keys())[key_o_idx]
+            return self.m_categories[key]
 
 
     def __iter__(self):
-        CategoryCollection.CategoryCollectionIterator(self)
+        return CategoryCollection.CategoryCollectionIterator(self)
 
 
 class Category:
@@ -119,7 +129,7 @@ class Category:
         
         def __next__(self):
             if self.cur_idx < self.m_length:
-                _key_id, res = self.m_ref_collection_obj.m_items[self.cur_idx]
+                res = self.m_ref_collection_obj[self.cur_idx]
             else :
                 raise StopIteration()
             
@@ -152,6 +162,17 @@ class Category:
             return True
         return False
     
+    def keys(self):
+        return self.m_items.keys()
+
+    def __getitem__(self, key_o_idx):
+        if isinstance( key_o_idx, str):
+            return self.m_items[key_o_idx]
+        elif isinstance(key_o_idx, int):
+            key = list(self.keys())[key_o_idx]
+            return self.m_items[key]
+
+    
     def serialize(self):
         result = []
         for _, item in self.m_items.items():
@@ -161,7 +182,7 @@ class Category:
     def deserialize(self, raw_data_list : list):
         for data in raw_data_list:
             obj = self.m_cls()
-            obj.deserialize(data)
+            obj.deserialize(data, self)
             self.m_items[obj.unique_id]=obj
         
 
@@ -240,6 +261,10 @@ class BaseMeta:
     def file_location(self):
         return self.m_location
     
+    def _meta_type_check(self):
+        if not (self.meta_type == self.m_raw_data['meta'].get('meta_type', self.meta_type)): # if not exists meta_type skip 
+            raise BaseMeta.MetaTypeNotCompatibleException("Meta type is Not compatible")
+
 
     def open_meta(self, path):
         self.m_location = path
@@ -253,12 +278,11 @@ class BaseMeta:
         with open(meta_path, "r") as fp:
             self.m_raw_data = yaml.load(fp, yaml.FullLoader)
         
-        if not (self.meta_type == self.m_raw_data['meta'].get('meta_type', self.meta_type)): # if not exists meta_type skip 
-            raise BaseMeta.MetaTypeNotCompatibleException("Meta type is Not compatible")
-        else:
-            self.m_location = meta_path
-            self.m_raw_data_loaded = True
-            self.m_category_collection.deserialize(self.data(self.get_category_data_key()))
+        self._meta_type_check() # raise exceiption MetaTypeNotCompatibleException
+
+        self.m_location = meta_path
+        self.m_raw_data_loaded = True
+        self.m_category_collection.deserialize(self.data(self.get_category_data_key()))
 
         return self.m_raw_data_loaded
 
@@ -298,8 +322,11 @@ class LandmarkMeta(BaseMeta):
         LANDMAKR_KEY = "landmark"
         NAME_KEY = "name"
         def __init__(self):
+            self.m_parent_category = None
             self.m_landmark_name = ""
             self.m_name = ""
+
+        
         @property
         def landmark(self):
             return self.m_landmark_name
@@ -314,7 +341,8 @@ class LandmarkMeta(BaseMeta):
             return {LandmarkMeta.LandmarkItemMeta.LANDMAKR_KEY : self.m_landmark_name, 
                      LandmarkMeta.LandmarkItemMeta.NAME_KEY: self.m_name}
 
-        def deserialize(self, data : dict):
+        def deserialize(self, data : dict, parent_category : Category = None):
+            self.m_parent_category = parent_category
             lmk_name = data.get(LandmarkMeta.LandmarkItemMeta.LANDMAKR_KEY, None)
             if lmk_name is None :
                 raise BaseItemMeta.ItemMetaKeyError('"landmark" key is not existed.')
@@ -334,6 +362,13 @@ class LandmarkMeta(BaseMeta):
 
     def open_meta(self, path):
         super().open_meta(path)
+
+    def _meta_type_check(self):
+        super()._meta_type_check()
+        if not self.m_raw_data['meta'].get('images_root', False): # if images_root not exists in meta file . it is image meta.
+            raise BaseMeta.MetaTypeNotCompatibleException("this is not landmark meta")
+
+
         
 
     def write_meta(self, path = None):
@@ -349,16 +384,20 @@ class LandmarkMeta(BaseMeta):
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
      
     
-    def data(self, key):
-        """
-            return list of data
-            [landmark and name]
-        """
+    def extension(self):
         if self.is_loaded:
-            return self.m_raw_data['meta']['images_name'][key]
+            ext_str = self.raw_data['meta']['file_ext']
+            ext_str = ext_str[1:] if ext_str[0] == "." else ext_str
+            return ImageExtensionEnum(ext_str)
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
-    
 
+    @property
+    def image_location(self):
+        return self.raw_data['meta']['images_root']
+    
+    @image_location.setter
+    def image_location(self, root_pth):
+        self.raw_data['meta']['images_root'] = root_pth
 
 class ImageMeta(BaseMeta):
     META_NAME = "Image"
@@ -382,8 +421,9 @@ class ImageMeta(BaseMeta):
         def serialize(self):
             return self.name 
         
-        def deserialize(self, data):
+        def deserialize(self, data, parent_category  :Category = None):
             self.name = data
+            self.m_parent_category = parent_category
 
 
     def __init__(self):
@@ -399,13 +439,19 @@ class ImageMeta(BaseMeta):
     def open_meta(self, path):
         super().open_meta(path)
 
+    def _meta_type_check(self):
+        super()._meta_type_check()
+        if not self.m_raw_data['meta'].get('images_root', True): # if images_root not exists in meta file . it is image meta.
+            raise BaseMeta.MetaTypeNotCompatibleException("this is not images_meta meta")
 
     def write_meta(self, path = None):
         super().write_meta(path)
 
     def extension(self):
         if self.is_loaded:
-            return ImageExtensionEnum(self.raw_data['meta']['file_ext'])
+            ext_str = self.raw_data['meta']['file_ext']
+            ext_str = ext_str[1:] if ext_str[0] == "." else ext_str
+            return ImageExtensionEnum(ext_str)
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
         
     def __iter__(self):

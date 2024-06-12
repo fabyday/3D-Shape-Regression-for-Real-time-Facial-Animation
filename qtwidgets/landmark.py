@@ -12,10 +12,6 @@ class Landmark:
         self.m_landmark = None
         self.m_image = None 
         self.m_lmk_meta = None
-        
-
-    
-
     @property
     def landmark(self):
         return self.m_landmark
