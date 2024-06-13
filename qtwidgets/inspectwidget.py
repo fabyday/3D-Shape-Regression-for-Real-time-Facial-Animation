@@ -57,6 +57,7 @@ def open_and_find_meta(Qt_object, callback):
         if dialog.exec_():
             callback(dialog.selectedFiles()[0])
         else :
+            
             callback(None)
     return wrapper
 
@@ -64,7 +65,7 @@ class InspectorWidget(QWidget):
 
     detector_loaded = pyqtSignal(bool)
 
-    def __init__(self, ctx: ProgramContext):
+    def __init__(self, ctx):
         super().__init__()
 
         self.m_ctx = ctx
