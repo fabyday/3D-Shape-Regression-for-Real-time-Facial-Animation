@@ -104,7 +104,7 @@ class Worker(QThread):
         self.m_parent = parent
         self.m_mutex = QMutex()
 
-    def reserve_job(self, job_o_joblist : Runnable | Jobs ):
+    def reserve_job(self, job_o_joblist : Runnable ):
         if isinstance(job_o_joblist, (Runnable, Jobs)):
             job_list = [job_o_joblist]
         else:
@@ -154,24 +154,6 @@ class DummyJob(Runnable):
     def run(self):
         print(self.uid)
         print('test')
-
-class LandmarkDetectJob(Runnable):
-    def __init__(self):
-        super().__init__()
-         
-    
-
-    def run(self):
-        pass 
-
-
-class ImageLoadJob(Runnable):
-    def __init__(self):
-        super().__init__()
-        
-
-    def run(self):
-        pass
 
 
 

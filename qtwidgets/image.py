@@ -21,6 +21,9 @@ class Image :
         self.m_lazy_load_flag  = lazy_load
 
 
+    def resize(self, width):
+        pass
+
     @property
     def image (self):
         return self._load()
@@ -35,7 +38,11 @@ class Image :
         self.m_width = w 
         self.m_height = h
         self.m_image = image
-
+    
+    @property
+    def shape(self):
+        return self.m_width, self.m_height
+    
     def _load(self):
         if self.m_image is None :
             self.m_image = cv2.imread(self.name + self.m_extension.value)

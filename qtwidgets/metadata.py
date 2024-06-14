@@ -4,6 +4,7 @@ import os
 import os.path as osp 
 import yaml 
 import inspect
+import uuid
 
 def is_meta_file(path):
     if osp.isfile(path) and osp.splitext(osp.basename(path))[-1] == "yaml": # check extension file
@@ -16,10 +17,11 @@ class BaseItemMeta():
     class ItemMetaKeyError(Exception):
         pass
     def __init__(self):
-        pass 
+        self.m_uuid =  uuid.uuid4()
 
+    @property
     def unique_id(self):
-        raise NotImplementedError("Not implemented unique_id method")
+        return self.m_uuid
     
     def serialize(self):
         raise NotImplementedError("Not implemented serialize method")
@@ -322,6 +324,7 @@ class LandmarkMeta(BaseMeta):
         LANDMAKR_KEY = "landmark"
         NAME_KEY = "name"
         def __init__(self):
+            super().__init__()
             self.m_parent_category = None
             self.m_landmark_name = ""
             self.m_name = ""
@@ -333,9 +336,7 @@ class LandmarkMeta(BaseMeta):
         @property 
         def name(self):
             return self.m_name
-        @property
-        def unique_id(self):
-            return self.name
+
 
         def serialize(self):
             return {LandmarkMeta.LandmarkItemMeta.LANDMAKR_KEY : self.m_landmark_name, 
@@ -404,6 +405,7 @@ class ImageMeta(BaseMeta):
     CATEGORY_DATA_KEY = "meta.images_name"
     class ImageItemMeta(BaseItemMeta):
         def __init__(self):
+            super().__init__()
             self.m_parent_category = None
             self.m_name = ""
         
@@ -414,9 +416,6 @@ class ImageMeta(BaseMeta):
         @name.setter
         def name(self, name):
             self.m_name = name
-        @property
-        def unique_id(self):
-            return self.name
         
         def serialize(self):
             return self.name 

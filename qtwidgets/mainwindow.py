@@ -19,7 +19,8 @@ import imageviewwidget
 import inspectwidget
 
 class MyApp(QMainWindow):
-    selected_data_chnaged_signal = pyqtSignal()
+    selected_data_changed_signal = pyqtSignal()
+    data_changed_signal = pyqtSignal()
 
     def __init__(self):
         super().__init__()
@@ -51,7 +52,7 @@ class MyApp(QMainWindow):
 
 
     def _init_image_view_ui(self, layout):
-        self.imagewidget = imageviewwidget.ImageViewWidget(self.data, self.worker_thread)
+        self.imagewidget = imageviewwidget.ImageViewWidget(self, self.data, self.worker_thread)
         # imagewidget
         layout.addWidget(self.imagewidget, 7)
     

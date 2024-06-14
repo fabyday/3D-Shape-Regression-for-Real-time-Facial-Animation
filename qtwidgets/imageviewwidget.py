@@ -35,7 +35,7 @@ class ImageViewWidget(QGraphicsView):
 
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
-    def __init__(self, program_data: Data, worker : Worker):
+    def __init__(self, parent, program_data: Data, worker : Worker):
 
         self._scene = QGraphicsScene()
         super(ImageWidget, self).__init__(self._scene)
