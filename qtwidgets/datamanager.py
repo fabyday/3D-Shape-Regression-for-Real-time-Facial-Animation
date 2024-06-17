@@ -8,7 +8,38 @@ import metadata
 import image
 import qtthread
 import image
-import landamrk
+import landmark
+
+import numpy as np 
+
+def save_landmark(lmk, path):
+    root_path = osp.dirname(path)
+    print("root", root_path)
+    if not osp.exists(root_path):
+        os.makedirs(root_path)
+    with open(path, 'w') as fp:
+        lmk_len = len(lmk)
+        for i, coord in enumerate(lmk):
+            fp.write(str(coord[0])+" "+str(coord[1]))
+            if not (lmk_len - 1 == i):
+                fp.write("\n")
+
+def load_landmark(path):
+    if not osp.exists(path):
+        raise FileNotFoundError("File not found. : " + path)
+    else : 
+        with open(path, 'r') as fp :
+            res = []
+            while True:
+                l = fp.read()
+                if len(l) == 0 :
+                    break 
+                x, y = map(float, l.split(" "))
+                res.append([x,y])
+            return np.array(res)
+
+
+
 class BaseMeshMeta():
     """
         provide mapping
@@ -22,50 +53,13 @@ class ICT_MeshMeta(BaseMeshMeta):
     pass
 
 
-
-class ImageLoaderFactory():
-
-
-
-    @staticmethod
-    def load(meta_info : metadata.BaseMeta, lazy_load_flag = True):
-        if meta_info.meta_type  == metadata.ImageMeta.META_NAME:
-            ImageLoaderFactory.load_from_image_meta(meta_info, lazy_load_flag) 
-
-        elif meta_info.meta_type == metadata.LandmarkMeta.META_NAME:
-            ImageLoaderFactory.load_from_landmark_meta(meta_info, lazy_load_flag)
-
-    @staticmethod
-    def load_from_image_meta(meta_info : metadata.ImageMeta, lazy_load_flag : bool = True):
-        ext = meta_info.extension
-        print(ext)
-        location = meta_info.file_location
-        for info in meta_info:
-            img_obj = image.Image(location = location, extension=ext, lazy_load=lazy_load_flag)
-            img_obj.name = info.name
-            img_obj.category = info.category
-            img_obj.load()
-    
-    @staticmethod
-    def load_from_landmark_meta(meta_info : metadata.LandmarkMeta, lazy_load_flag : bool = True):
-        jobs_object = qtthread.Jobs()
-        
-        ext  = meta_info.extension
-        image_location = meta_info.image_location
-        landmark_location = meta_info.file_location
-        for info in meta_info:
-
-            img_obj = image.Image(location = image_location, extension=ext, lazy_load=lazy_load_flag)
-            img_obj.name = info.m_name
-            img_obj.load()
-
-
 class DataCollection:
 
     class Data():
-        def __init__(self):
+        def __init__(self, uuid):
+            self.m_uuid = uuid
             self.m_image = None 
-            self.m_lmk =  landamrk.Landmark()
+            self.m_lmk =  landmark.Landmark()
         
         
 
@@ -78,30 +72,125 @@ class DataCollection:
         elif isinstance(key_o_idx, int):
             pass
     
-
+    
     def __iter__(self):
         pass
+    
+    
+    def load_from_image_item_meta(self, meta : metadata.ImageMeta, item_meta : metadata.ImageMeta.ImageItemMeta):
+        data = DataCollection.Data(item_meta.unique_id)
 
-    def load_from_meta(self, meta_data : metadata.BaseMeta):
-        jobs_object = qtthread.Jobs()
+        ext = meta.extension
+        location = meta.file_location
 
-        for meta in meta_data:
-            data = DataCollection.Data()
-            data.m_image
-            data.m_lmk
-            meta.name
-            self.m_data_item[meta.unique_id] = data
+        data.m_image = image.Image(location = location, extension=ext, lazy_load=False)
+        data.m_image.name = item_meta.name
+        data.m_image.category = item_meta.category
+        data.m_lmk = landmark.Landmark()
+        self.m_data_item[item_meta.unique_id ] = DataCollection.Data()
+        
 
-        return jobs_object
+    def load_from_lmk_item_meta(self, meta : metadata.LandmarkMeta, item_meta : metadata.LandmarkMeta.LandmarkItemMeta):
+        data = DataCollection.Data(item_meta.unique_id)
+        
+        ext  = item_meta.extension
+        image_location = meta.image_location
+        data.m_image = image.Image(location = image_location, extension=ext, lazy_load=False)
+        
+        data.m_image.name = item_meta.name
+        data.m_image.category = item_meta.category
+        data.m_image.load()
+        data.m_lmk = landmark.Landmark()
+        data.m_lmk.landmark = load_landmark(item_meta.landmark)
 
+        self.m_data_item[item_meta.unique_id ] = data
+
+        pass 
+
+    def load_from_meta(self, meta : metadata.BaseMeta, item_meta : metadata.BaseItemMeta):
+        if isinstance(item_meta, metadata.LandmarkMeta.LandmarkItemMeta):
+            self.load_from_lmk_item_meta(meta, item_meta)
+
+        elif isinstance(item_meta, metadata.ImageMeta.ImageItemMeta):
+            self.load_from_image_item_meta(meta, item_meta)
 
 
     def save(self):
         pass 
 
 
-    def meta_info_from_data(self, meta_info):
-        pass
+
+
+
+class DataIOFactory():
+    @staticmethod
+    def load(collection : DataCollection, meta_info : metadata.BaseMeta, lazy_load_flag = True):
+        if meta_info.meta_type  == metadata.ImageMeta.META_NAME:
+            return DataIOFactory.load_from_image_meta(collection, meta_info, lazy_load_flag) 
+
+        elif meta_info.meta_type == metadata.LandmarkMeta.META_NAME:
+            return DataIOFactory.load_from_landmark_meta(collection, meta_info, lazy_load_flag)
+
+    @staticmethod
+    def load_from_image_meta(collection : DataCollection, meta_info : metadata.ImageMeta, lazy_load_flag : bool = True):
+        ext = meta_info.extension
+        jobs_object = qtthread.Jobs()
+
+        print(ext)
+        location = meta_info.file_location
+        for info in meta_info:
+            job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+            jobs_object.add(job)
+
+        return jobs_object
+    
+    @staticmethod
+    def load_from_landmark_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, lazy_load_flag : bool = True):
+        jobs_object = qtthread.Jobs()
+        for info in meta_info:
+            job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+            jobs_object.add(job)
+
+        return jobs_object
+
+
+
+    def save(collection : DataCollection, meta_info : metadata.LandmarkMeta):
+        if isinstance(meta_info, metadata.LandmarkMeta):
+            return DataIOFactory.save_from_landmark_meta(collection, meta_info)
+        elif isinstance(meta_info, metadata.ImageMeta):
+            return DataIOFactory.save_from_image_meta(collection, meta_info)
+
+
+    @staticmethod
+    def save_from_landmark_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, location : str = None ):
+        jobs = qtthread.Jobs()
+        extension = meta_info.extension
+        for info in meta_info : 
+            lmk_name =  info.name
+            try : 
+                uuid = info.unique_id
+                f = lambda : save_landmark(collection[uuid].m_landmark.landmark, info.name)
+                jobs.add(qtthread.Job(f))
+            except:
+                pass 
+        return jobs
+            
+
+
+    
+    def save_from_image_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, location : str = None):
+        jobs = qtthread.Jobs()
+        if location is None :
+            location = meta_info.file_location
+        for info in meta_info : 
+            uuid = info.unique_id
+            try : 
+                f = lambda : save_landmark(collection[uuid].m_landmark.landmark, info.name)
+                jobs.add(qtthread.Job(f))
+            except : 
+                pass 
+        return jobs
 
 
 
@@ -162,31 +251,32 @@ class LoadDetectJob(qtthread.Runnable):
 
 
 
-class ImageLoadJob(qtthread.Runnable):
-    def __init__(self, image_object):
-        super().__init__()
-        self.image_object = image_object
 
-    def run(self):
-        self.image_object.load()
 
 class DataManager:
-    def __init__(self):
+    def __init__(self, worker : qtthread.Worker):
         self.m_detector = Detector() 
+        self.m_worker = worker
+        self.reset()
+
 
     def reset(self):
         self.m_data_collection = DataCollection()
         self.m_current_selected_data = None
         self.m_meta = None
+        self.m_load_flag = False 
         
-
+    
+    def is_loaded(self):
+        return self.m_load_flag
     def load_detector(self, pth  =None ):
         self.m_detector.set_path(pth)
-        return LoadDetectJob(self.m_detector)
+        self.m_worker.reserve_job(LoadDetectJob(self.m_detector))
 
     def get_data_collection(self):
         return self.m_data_collection
-    
+    def get_selected_data(self):
+        return self.m_current_selected_data 
     def load_data_from_meta(self, pth):
         """
             return Runnable
@@ -202,24 +292,33 @@ class DataManager:
                 pass 
         self.m_meta = meta
         print(meta.meta_type, " is loaded ...")
-        self.m_data_collection.load_from_meta(self.m_meta)
+        job_list = DataIOFactory.load( self.m_data_collection, self.m_meta, False)
+        
+
+        def fin(x):
+            self.m_current_selected_data = self.m_data_collection[0].m_uuid
+        job_list.then(fin)
+        self.m_worker.reserve_job(job_list)
+        
 
     def save_data(self, pth):
-        pass
+        """
+            save landmark data
+            reserver to worker
+        """
+        if not osp.exists(pth):
+            os.makedirs(pth)
+        
+        self.m_meta.write_meta(pth)
+
+        jobs = DataIOFactory.save(self.m_meta)        
+        self.m_worker.reserve_job(jobs)
     
-    
-
-
-
-
-def detect_landmark(data_mgr : DataManager, data:DataCollection.Data):
-    data.m_image
-    data_mgr.m_detector 
-    data.m_lmk
 
 
 
 if __name__ == "__main__":
-    manger = DataManager()
+    a = qtthread.Worker(None)
+    manger = DataManager(a)
     pt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_image")
     manger.load_data_from_meta(pt)

@@ -20,10 +20,17 @@ class Runnable():
         self.m_id = uuid.uuid4()
         self.m_cancel = False 
         self.m_is_completed = False
+        self.m_callback = None 
 
     def cancel(self):
         self.m_cancel = True
 
+
+    def then(self, func):
+        """
+            return this runnable object
+        """
+        self.m_callback = func
 
     def is_completed(self):
         return self.m_is_completed
@@ -55,6 +62,14 @@ class Runnable():
     def run(self):
         return NotImplemented
     
+
+class Job(Runnable):
+    def __init__(self, func):
+        super().__init__()
+        self.m_func = func
+    def run(self):
+        return self.m_func()
+    
 class Jobs(Runnable):
     def __init__(self):
         self.m_runnable_list = []
@@ -85,7 +100,7 @@ class Worker(QThread):
     class NotRunnableObjectException(Exception):
         pass 
 
-    
+    jobs_complete_signal = pyqtSignal(uuid.UUID)
     job_complete_signal = pyqtSignal(uuid.UUID) #return uuid
     job_cancel_signal = pyqtSignal(uuid.UUID)  #return uuid
 
@@ -104,16 +119,15 @@ class Worker(QThread):
         self.m_parent = parent
         self.m_mutex = QMutex()
 
-    def reserve_job(self, job_o_joblist : Runnable ):
+    def reserve_job(self, job_o_joblist : Runnable):
         if isinstance(job_o_joblist, (Runnable, Jobs)):
-            job_list = [job_o_joblist]
+            job_list = job_o_joblist
         else:
             raise Worker.NotRunnableObjectException("one of job is not runnable")
 
-
         self.m_mutex.lock()
         for job in job_list:
-            self.jobs_queue.put(job)
+            self.jobs_queue.put(job_o_joblist)
         self.m_mutex.unlock()
 
     def run(self):
@@ -129,7 +143,6 @@ class Worker(QThread):
             if data is None :
                 time.sleep(0.0001)
                 continue
-                
             for cur_i, runnable in enumerate(data):
                 ret = runnable._run()
                 one_base_index = cur_i + 1
@@ -141,8 +154,9 @@ class Worker(QThread):
                 else : 
                     self.job_cancel_signal.emit(data.uid)
                     self.job_progress_signal.emit(data.uid, one_base_index, len(data), True, format_string.format(one_base_index, "canceled."))
-
-                
+            self.jobs_complete_signal.emit(data.m_id)
+            if data.m_callback is not None :
+                data.m_callback(data)
 
 class DummyJob(Runnable):
     def __init__(self):

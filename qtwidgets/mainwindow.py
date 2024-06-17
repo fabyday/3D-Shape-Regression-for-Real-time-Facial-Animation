@@ -19,9 +19,8 @@ import imageviewwidget
 import inspectwidget
 
 class MyApp(QMainWindow):
-    selected_data_changed_signal = pyqtSignal()
-    data_changed_signal = pyqtSignal()
-
+    data_changed_signal = pyqtSignal(uuid.UUID)
+    
     def __init__(self):
         super().__init__()
         self.m_data_manager = datamanager.DataManager()
@@ -102,8 +101,11 @@ class MyApp(QMainWindow):
         self.status_label.setText("")
         self.progress_bar.setVisible(False)
 
-    # def get_status_show_message(self):
-    #     return self.statusbar.showMessage
+
+
+    
+    def get_status_show_message(self):
+        return self.statusbar.showMessage
 
     # def connect_widgets_functionality(self):
     #     def wrapper(i):

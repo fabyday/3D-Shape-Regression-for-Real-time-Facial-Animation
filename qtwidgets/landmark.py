@@ -40,6 +40,8 @@ class Landmark:
     def image(self, image : ImageLib.Image ):
         self.m_image = image
     
+
+
 if __name__ == "__main__":
     lmk = Landmark()
     lmk.landmark = np.arange(9).reshape(3,3)

@@ -35,14 +35,10 @@ class ImageViewWidget(QGraphicsView):
 
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
-    def __init__(self, parent, program_data: Data, worker : Worker):
+    def __init__(self, parent, program_data: datamanager.DataManager):
 
         self._scene = QGraphicsScene()
         super(ImageWidget, self).__init__(self._scene)
-        self.worker = worker
-
-        self.worker.lmk_load_finished.connect(self.reload_image)
-        self.worker.lmk_load_finished.connect(self.reload_lmk_to_view)
 
         self.program_data = program_data
 
