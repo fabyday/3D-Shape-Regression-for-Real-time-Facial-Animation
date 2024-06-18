@@ -73,7 +73,24 @@ class CategoryCollection():
                     raise StopIteration()
                 self.m_cur_sub_iterator = iter(self.m_ref_collection_obj[self.cur_idx])
                 return next(self.m_cur_sub_iterator)
+            
+    class CategoryCollectionIterator2(): # shallow iterator 
+        def __init__(self, collection_obj : CategoryCollection):
+            self.m_length = len(collection_obj.keys())
+            self.cur_idx = 0
+            self.m_ref_collection_obj = collection_obj
+            self.m_cur_sub_iterator = iter(self.m_ref_collection_obj[self.cur_idx])
 
+        def __iter__(self):
+            return self 
+        
+        def __next__(self):
+            if self.cur_idx >= self.m_length:
+                raise StopIteration()
+            res = self.m_ref_collection_obj[self.cur_idx]
+            self.cur_idx += 1
+            return res
+            
     class CategoryAlreadyExistsException(Exception):
         pass
 
@@ -114,7 +131,7 @@ class CategoryCollection():
 
 
     def __iter__(self):
-        return CategoryCollection.CategoryCollectionIterator(self)
+        return CategoryCollection.CategoryCollectionIterator2(self)
 
 
 class Category:
@@ -148,7 +165,15 @@ class Category:
         self.m_global_category_collection  = category_collection
         self.m_global_category_collection.append_category(self)
 
+    @property
+    def category_name(self):
+        return self.m_category_name
 
+    def add_item(self, item : BaseItemMeta):
+        if isinstance(item, self.m_cls): 
+            self.m_item[item.unique_id] = item
+        else:
+            raise 
     def __iter__(self):
         return Category.CategoryIterator(self)
 
@@ -299,11 +324,29 @@ class BaseMeta:
             if not osp.exists(osp.dirname(path)):
                 os.makedirs(osp.dirname(path))
             save_path = path
+
+
+        dict_items = self.m_category_collection.serialize()
+        self.raw_data["images_name"] = dict_items
         with open(save_path, "w") as fp: 
             yaml.dump(self.m_raw_data, fp)
         return True 
     
 
+    def convert_to(self):
+        raise NotImplementedError("Not implement convert_to method.")
+
+
+    def add_category(self, category_name : str):
+        try : 
+            Category(category_name, self.m_category_collection, self.m_cls_type)
+        except:
+            pass
+
+        
+
+    def add_item_to_category(self, item : BaseItemMeta, cateogry_name : str | Category):
+        pass 
 
     def data(self, key:str):
         """
@@ -320,6 +363,7 @@ class BaseMeta:
 class LandmarkMeta(BaseMeta):
     META_NAME = "Landmark"
     CATEGORY_DATA_KEY = "meta.images_name"
+
     class LandmarkItemMeta(BaseItemMeta):
         LANDMAKR_KEY = "landmark"
         NAME_KEY = "name"
@@ -328,15 +372,14 @@ class LandmarkMeta(BaseMeta):
             self.m_parent_category = None
             self.m_landmark_name = ""
             self.m_name = ""
-
         
         @property
         def landmark(self):
             return self.m_landmark_name
+        
         @property 
         def name(self):
             return self.m_name
-
 
         def serialize(self):
             return {LandmarkMeta.LandmarkItemMeta.LANDMAKR_KEY : self.m_landmark_name, 
@@ -350,6 +393,7 @@ class LandmarkMeta(BaseMeta):
             self.m_landmark_name = lmk_name
 
             name = data.get(LandmarkMeta.LandmarkItemMeta.NAME_KEY, None)
+
             if name is None :
                 raise BaseItemMeta.ItemMetaKeyError('"name" key is not existed.')
             self.m_name = data.get(LandmarkMeta.LandmarkItemMeta.NAME_KEY, None)
@@ -369,21 +413,16 @@ class LandmarkMeta(BaseMeta):
         if not self.m_raw_data['meta'].get('images_root', False): # if images_root not exists in meta file . it is image meta.
             raise BaseMeta.MetaTypeNotCompatibleException("this is not landmark meta")
 
-
-        
-
     def write_meta(self, path = None):
         """
             if path is None overwrite meta
         """
         super().write_meta(path)
 
-
     def keys(self):
         if self.is_loaded:
             return self.raw_data['meta']['images_name'].keys() 
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
-     
     
     def extension(self):
         if self.is_loaded:
@@ -399,6 +438,20 @@ class LandmarkMeta(BaseMeta):
     @image_location.setter
     def image_location(self, root_pth):
         self.raw_data['meta']['images_root'] = root_pth
+    
+    def __iter__(self):
+        return iter(self.m_category_collection)
+
+    def convert_to(self):
+        cvt_image_meta = ImageMeta()
+        cvt_image_meta.reset()
+        for category_item in self:
+            category = Category(category_item.category_name, cvt_image_meta.m_category_collection, cvt_image_meta.m_cls_type)
+            for item in category_item:
+                res = ImageMeta.ImageItemMeta()
+                res.name = item.name
+                category.add_item(res)
+
 
 class ImageMeta(BaseMeta):
     META_NAME = "Image"
@@ -461,6 +514,16 @@ class ImageMeta(BaseMeta):
             return self.raw_data['meta']['images_name'].keys() 
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
 
+    def convert_to(self):
+        cvt_image_meta = LandmarkMeta()
+        cvt_image_meta.reset()
+        for category_item in self:
+            category = Category(category_item.category_name, cvt_image_meta.m_category_collection, cvt_image_meta.m_cls_type)
+            for item in category_item:
+                res = LandmarkMeta.LandmarkItemMeta()
+                res.name = item.name
+                res.landmark = item.name + "_lmk.txt"
+                category.add_item(res) 
 if __name__ == "__main__":
     image_meta = ImageMeta()
     image_meta.open_meta(osp.join(osp.dirname(osp.dirname(__file__)), "images/all_in_one/expression"))
