@@ -115,10 +115,6 @@ class DataCollection:
             self.load_from_image_item_meta(meta, item_meta)
 
 
-    def save(self):
-        pass 
-
-
 
 
 
