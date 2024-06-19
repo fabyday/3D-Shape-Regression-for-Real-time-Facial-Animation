@@ -171,7 +171,7 @@ class Category:
 
     def add_item(self, item : BaseItemMeta):
         if isinstance(item, self.m_cls): 
-            self.m_item[item.unique_id] = item
+            self.m_items[item.unique_id] = item
         else:
             raise 
     def __iter__(self):
@@ -248,6 +248,12 @@ class BaseMeta:
             raise BaseMeta.ItemMetaIsNotUnique("meta Item is Not Unique. Can't measure it which to Use.")
         return meta
 
+
+    def get_item_iterator(self):
+        return CategoryCollection.CategoryCollectionIterator(self.m_category_collection)
+    
+    def get_category_iterator(self):
+        return CategoryCollection.CategoryCollectionIterator2(self.m_category_collection)
 
     def get_category_data_key(self):
         try:
@@ -377,9 +383,20 @@ class LandmarkMeta(BaseMeta):
         def landmark(self):
             return self.m_landmark_name
         
+        @landmark.setter
+        def landmark(self, name):
+            self.m_landmark_name = name 
+        
+
+
+
         @property 
         def name(self):
             return self.m_name
+
+        @name.setter
+        def name(self, name):
+            self.m_name = name
 
         def serialize(self):
             return {LandmarkMeta.LandmarkItemMeta.LANDMAKR_KEY : self.m_landmark_name, 
@@ -515,15 +532,16 @@ class ImageMeta(BaseMeta):
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
 
     def convert_to(self):
-        cvt_image_meta = LandmarkMeta()
-        cvt_image_meta.reset()
+        cvt_lmk_meta = LandmarkMeta()
+        cvt_lmk_meta.reset()
         for category_item in self:
-            category = Category(category_item.category_name, cvt_image_meta.m_category_collection, cvt_image_meta.m_cls_type)
+            category = Category(category_item.category_name, cvt_lmk_meta.m_category_collection, cvt_lmk_meta.m_cls_type)
             for item in category_item:
                 res = LandmarkMeta.LandmarkItemMeta()
                 res.name = item.name
                 res.landmark = item.name + "_lmk.txt"
                 category.add_item(res) 
+        return cvt_lmk_meta
 if __name__ == "__main__":
     image_meta = ImageMeta()
     image_meta.open_meta(osp.join(osp.dirname(osp.dirname(__file__)), "images/all_in_one/expression"))

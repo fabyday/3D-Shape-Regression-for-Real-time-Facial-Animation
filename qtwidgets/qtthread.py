@@ -72,6 +72,7 @@ class Job(Runnable):
     
 class Jobs(Runnable):
     def __init__(self):
+        super().__init__()
         self.m_runnable_list = []
 
 

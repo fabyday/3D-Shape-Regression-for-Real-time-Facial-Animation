@@ -113,7 +113,7 @@ class DataCollection:
 
         elif isinstance(item_meta, metadata.ImageMeta.ImageItemMeta):
             self.load_from_image_item_meta(meta, item_meta)
-
+            meta = self.meta.convert_to()
 
 
 
@@ -121,10 +121,10 @@ class DataCollection:
 class DataIOFactory():
     @staticmethod
     def load(collection : DataCollection, meta_info : metadata.BaseMeta, lazy_load_flag = True):
-        if meta_info.meta_type  == metadata.ImageMeta.META_NAME:
+        if isinstance(meta_info, metadata.ImageMeta):
             return DataIOFactory.load_from_image_meta(collection, meta_info, lazy_load_flag) 
 
-        elif meta_info.meta_type == metadata.LandmarkMeta.META_NAME:
+        elif isinstance(meta_info,metadata.LandmarkMeta):
             return DataIOFactory.load_from_landmark_meta(collection, meta_info, lazy_load_flag)
 
     @staticmethod
@@ -256,6 +256,12 @@ class DataManager:
         self.reset()
 
 
+    def get_category_iterator(self):
+        return self.m_meta.get_category_iterator()
+
+    def get_item_iterator(self):
+        return self.m_meta.get_item_iterator()
+
     def reset(self):
         self.m_data_collection = DataCollection()
         self.m_current_selected_data = None
@@ -287,15 +293,22 @@ class DataManager:
             except metadata.BaseMeta.MetaTypeNotCompatibleException:
                 pass 
         self.m_meta = meta
+
+        if isinstance(self.m_meta, metadata.ImageMeta):
+            self.m_meta = self.m_meta.convert_to()
         print(meta.meta_type, " is loaded ...")
-        job_list = DataIOFactory.load( self.m_data_collection, self.m_meta, False)
+        jobs = DataIOFactory.load( self.m_data_collection, self.m_meta, False)
         
 
-        def fin(x):
-            self.m_current_selected_data = self.m_data_collection[0].m_uuid
-        job_list.then(fin)
-        self.m_worker.reserve_job(job_list)
-        
+        jobs.then(self.__meta_load_finished_callback)
+        self.m_worker.reserve_job(jobs)
+
+    
+    def __meta_load_finished_callback(self, x):
+        self.m_current_selected_data = self.m_data_collection[0].m_uuid
+        print("callbck done")
+
+
 
     def save_data(self, pth):
         """
@@ -304,10 +317,9 @@ class DataManager:
         """
         if not osp.exists(pth):
             os.makedirs(pth)
-        
-        self.m_meta.write_meta(pth)
+        self.m_meta.write_meta(pth) # save meta
 
-        jobs = DataIOFactory.save(self.m_meta)        
+        jobs = DataIOFactory.save(self.m_meta) # save data
         self.m_worker.reserve_job(jobs)
     
 
@@ -315,6 +327,7 @@ class DataManager:
 
 if __name__ == "__main__":
     a = qtthread.Worker(None)
+    a.start()
     manger = DataManager(a)
     pt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_image")
     manger.load_data_from_meta(pt)
