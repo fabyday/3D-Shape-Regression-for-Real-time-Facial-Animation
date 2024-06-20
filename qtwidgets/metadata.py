@@ -229,7 +229,6 @@ class BaseMeta:
         pass
     def __init__(self, type_name = "BaseMeta", cls_type : type = None):
         self.m_type = type_name
-
         self.m_cls_type = self.get_item_meta() if cls_type is None else cls_type
         self.reset()
 
@@ -263,14 +262,16 @@ class BaseMeta:
         return key
 
 
-    def create(self):
-        self.reset()
+
+    def create(self, filename : str | None = None ):
+        self.reset(filename)
         self.m_raw_data = {"meta" : {"meta_type" : self.meta_type}}
         self.m_raw_data_loaded = True
         self.m_category_collection = CategoryCollection(self.m_cls_type)
     
 
-    def reset(self):
+    def reset(self, filename :str | None = None ):
+        self.m_meta_file_name = BaseMeta.Default_File_Name if filename is None else filename
         self.m_raw_data = None 
         self.m_location = None 
         self.m_raw_data_loaded = False
@@ -312,8 +313,11 @@ class BaseMeta:
             self.m_raw_data = yaml.load(fp, yaml.FullLoader)
         
         self._meta_type_check() # raise exceiption MetaTypeNotCompatibleException
+        meta_file_name = osp.basename(meta_path)
+        meta_dir_path = osp.dirname(meta_path)
 
-        self.m_location = meta_path
+        self.m_location = meta_dir_path 
+        self.m_meta_file_name = meta_file_name
         self.m_raw_data_loaded = True
         self.m_category_collection.deserialize(self.data(self.get_category_data_key()))
 
@@ -419,7 +423,7 @@ class LandmarkMeta(BaseMeta):
         super().__init__(LandmarkMeta.META_NAME)
     
     def create(self):
-        super.create()
+        super().create()
         self.m_raw_data['images_name'] = dict()
 
     def open_meta(self, path):
@@ -440,13 +444,23 @@ class LandmarkMeta(BaseMeta):
         if self.is_loaded:
             return self.raw_data['meta']['images_name'].keys() 
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
-    
+    @property
     def extension(self):
         if self.is_loaded:
             ext_str = self.raw_data['meta']['file_ext']
-            ext_str = ext_str[1:] if ext_str[0] == "." else ext_str
+            ext_str = ext_str if ext_str.startswith(".") else "."+ext_str
             return ImageExtensionEnum(ext_str)
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
+    @extension.setter
+    def extension(self, ext : str | ImageExtensionEnum):
+        if isinstance(ext, ImageExtensionEnum):
+            self.raw_data['meta']['file_ext'] = ext.value
+        elif isinstance(ext, str) : 
+            if ext.startswith("."):
+                self.raw_data['meta']['file_ext'] = ext
+            else : 
+                self.raw_data['meta']['file_ext'] = "."+ext
+
 
     @property
     def image_location(self):
@@ -515,14 +529,24 @@ class ImageMeta(BaseMeta):
 
     def write_meta(self, path = None):
         super().write_meta(path)
-
+    @property
     def extension(self):
         if self.is_loaded:
             ext_str = self.raw_data['meta']['file_ext']
-            ext_str = ext_str[1:] if ext_str[0] == "." else ext_str
+            ext_str = ext_str if ext_str.startswith(".") else "."+ext_str
             return ImageExtensionEnum(ext_str)
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
-        
+    
+    @extension.setter
+    def extension(self, ext : str | ImageExtensionEnum):
+        if isinstance(ext, ImageExtensionEnum):
+            self.raw_data['meta']['file_ext'] = ext.value
+        elif isinstance(ext, str) : 
+            if ext.startswith("."):
+                self.raw_data['meta']['file_ext'] = ext
+            else : 
+                self.raw_data['meta']['file_ext'] = "."+ext
+
     def __iter__(self):
         return iter(self.m_category_collection)
 
@@ -533,7 +557,9 @@ class ImageMeta(BaseMeta):
 
     def convert_to(self):
         cvt_lmk_meta = LandmarkMeta()
-        cvt_lmk_meta.reset()
+        cvt_lmk_meta.create()
+        cvt_lmk_meta.extension = self.extension
+        cvt_lmk_meta.image_location = self.file_location
         for category_item in self:
             category = Category(category_item.category_name, cvt_lmk_meta.m_category_collection, cvt_lmk_meta.m_cls_type)
             for item in category_item:

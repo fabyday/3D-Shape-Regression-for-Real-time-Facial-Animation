@@ -11,6 +11,11 @@ class Category():
 
 
 class Image :
+
+    class ImageNotLoadedException(Exception):
+        pass 
+
+
     def __init__(self, location, extension : metadata.ImageExtensionEnum, lazy_load : bool = True):
         self.m_image = None 
         self.m_location = location
@@ -46,6 +51,10 @@ class Image :
     def _load(self):
         if self.m_image is None :
             self.m_image = cv2.imread(self.name + self.m_extension.value)
+            # if self.m_image is None :
+                # raise Image.ImageNotLoadedException("Image is not loaded.")
+            if self.m_image is None : 
+                return 
             if len(self.m_image.shape) == 3 :
                 h, w, _ = self.m_image.shape
             else :

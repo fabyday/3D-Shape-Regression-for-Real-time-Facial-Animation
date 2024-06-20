@@ -3,6 +3,8 @@ import time
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtGui import QImage
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex
+import os 
+import os.path as osp
 
 
 

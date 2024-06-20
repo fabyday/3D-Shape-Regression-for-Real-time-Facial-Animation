@@ -9,7 +9,7 @@ import image
 import qtthread
 import image
 import landmark
-
+import uuid 
 import numpy as np 
 
 def save_landmark(lmk, path):
@@ -54,7 +54,9 @@ class ICT_MeshMeta(BaseMeshMeta):
 
 
 class DataCollection:
-
+    class NoDataException(Exception):
+        pass 
+    
     class Data():
         def __init__(self, uuid):
             self.m_uuid = uuid
@@ -67,11 +69,14 @@ class DataCollection:
         self.m_data_item = {}
 
     def __getitem__(self, key_o_idx):
-        if isinstance(key_o_idx, str):
-            pass 
+        if len(self.m_data_item) == 0:
+            raise DataCollection.NoDataException("data might not be loaded.")
+
+        if isinstance(key_o_idx, uuid.UUID | str):
+            item = self.m_data_item[key_o_idx]
         elif isinstance(key_o_idx, int):
-            pass
-    
+            key, item = list(self.m_data_item.items())[key_o_idx]
+        return item    
     
     def __iter__(self):
         pass
@@ -93,7 +98,7 @@ class DataCollection:
     def load_from_lmk_item_meta(self, meta : metadata.LandmarkMeta, item_meta : metadata.LandmarkMeta.LandmarkItemMeta):
         data = DataCollection.Data(item_meta.unique_id)
         
-        ext  = item_meta.extension
+        ext  = meta.extension
         image_location = meta.image_location
         data.m_image = image.Image(location = image_location, extension=ext, lazy_load=False)
         
@@ -101,20 +106,24 @@ class DataCollection:
         data.m_image.category = item_meta.category
         data.m_image.load()
         data.m_lmk = landmark.Landmark()
-        data.m_lmk.landmark = load_landmark(item_meta.landmark)
+        try :
+            data.m_lmk.landmark = load_landmark(item_meta.landmark)
+        except : 
+            pass 
 
         self.m_data_item[item_meta.unique_id ] = data
-
-        pass 
+        print(item_meta.unique_id)
 
     def load_from_meta(self, meta : metadata.BaseMeta, item_meta : metadata.BaseItemMeta):
+        print("lmk")
+        print(type(item_meta))
         if isinstance(item_meta, metadata.LandmarkMeta.LandmarkItemMeta):
+            print("lmk")
             self.load_from_lmk_item_meta(meta, item_meta)
 
         elif isinstance(item_meta, metadata.ImageMeta.ImageItemMeta):
+            print("lmk")
             self.load_from_image_item_meta(meta, item_meta)
-            meta = self.meta.convert_to()
-
 
 
 
@@ -133,9 +142,16 @@ class DataIOFactory():
         jobs_object = qtthread.Jobs()
 
         print(ext)
+
+
+        def run():
+            print("run")
+            collection.load_from_meta(meta_info, info)
+            print("run end")
         location = meta_info.file_location
-        for info in meta_info:
-            job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+        for info in meta_info.get_item_iterator():
+            # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+            job = qtthread.Job(run)
             jobs_object.add(job)
 
         return jobs_object
@@ -143,8 +159,13 @@ class DataIOFactory():
     @staticmethod
     def load_from_landmark_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, lazy_load_flag : bool = True):
         jobs_object = qtthread.Jobs()
-        for info in meta_info:
-            job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+        
+        def run():
+            print("run")
+            collection.load_from_meta(meta_info, info)
+        for info in meta_info.get_item_iterator():
+            # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
+            job = qtthread.Job(run)
             jobs_object.add(job)
 
         return jobs_object
@@ -300,12 +321,13 @@ class DataManager:
         jobs = DataIOFactory.load( self.m_data_collection, self.m_meta, False)
         
 
-        jobs.then(self.__meta_load_finished_callback)
+        # jobs.then(self.__meta_load_finished_callback)
         self.m_worker.reserve_job(jobs)
 
     
     def __meta_load_finished_callback(self, x):
-        self.m_current_selected_data = self.m_data_collection[0].m_uuid
+        print( self.m_data_collection)
+        self.m_current_selected_data = self.m_data_collection[0].unique_id
         print("callbck done")
 
 
@@ -331,3 +353,4 @@ if __name__ == "__main__":
     manger = DataManager(a)
     pt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_image")
     manger.load_data_from_meta(pt)
+    print(manger)

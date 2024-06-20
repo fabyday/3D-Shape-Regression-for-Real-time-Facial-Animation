@@ -37,9 +37,9 @@ class Runnable():
 
     def _run(self):
         if not self.m_cancel:
+            print('runn')
             self.run()
             self.m_is_completed = True
-            return self.is_completed()
         return self.is_completed()
 
     @property 
@@ -60,6 +60,7 @@ class Runnable():
 
     # user implementation
     def run(self):
+        print("not impl")
         return NotImplemented
     
 
@@ -68,6 +69,8 @@ class Job(Runnable):
         super().__init__()
         self.m_func = func
     def run(self):
+        print("job run")
+        print(self.m_func)
         return self.m_func()
     
 class Jobs(Runnable):
@@ -80,8 +83,9 @@ class Jobs(Runnable):
     def add(self, runnable:Runnable):
         self.m_runnable_list.append(runnable)
 
-    def _run():
-        pass 
+    def run(self):
+        for runnable in self.m_runnable_list:
+            runnable._run()
 
     def __len__(self):
         return len(self.m_runnable_list)
