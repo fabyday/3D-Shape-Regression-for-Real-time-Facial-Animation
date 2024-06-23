@@ -5,6 +5,7 @@ import os.path as osp
 import yaml 
 import inspect
 import uuid
+from typing import Union, Optional
 
 def is_meta_file(path):
     if osp.isfile(path) and osp.splitext(osp.basename(path))[-1] == "yaml": # check extension file
@@ -263,14 +264,14 @@ class BaseMeta:
 
 
 
-    def create(self, filename : str | None = None ):
+    def create(self, filename : Optional[str] = None  ):
         self.reset(filename)
         self.m_raw_data = {"meta" : {"meta_type" : self.meta_type}}
         self.m_raw_data_loaded = True
         self.m_category_collection = CategoryCollection(self.m_cls_type)
     
 
-    def reset(self, filename :str | None = None ):
+    def reset(self, filename :Optional[str] = None ):
         self.m_meta_file_name = BaseMeta.Default_File_Name if filename is None else filename
         self.m_raw_data = None 
         self.m_location = None 
@@ -355,7 +356,7 @@ class BaseMeta:
 
         
 
-    def add_item_to_category(self, item : BaseItemMeta, cateogry_name : str | Category):
+    def add_item_to_category(self, item : BaseItemMeta, cateogry_name : Union[str , Category]):
         pass 
 
     def data(self, key:str):
@@ -452,7 +453,7 @@ class LandmarkMeta(BaseMeta):
             return ImageExtensionEnum(ext_str)
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
     @extension.setter
-    def extension(self, ext : str | ImageExtensionEnum):
+    def extension(self, ext : Union[str , ImageExtensionEnum]):
         if isinstance(ext, ImageExtensionEnum):
             self.raw_data['meta']['file_ext'] = ext.value
         elif isinstance(ext, str) : 
@@ -538,7 +539,7 @@ class ImageMeta(BaseMeta):
         raise BaseMeta.RawDataNotLoadedException("not loaded exception")
     
     @extension.setter
-    def extension(self, ext : str | ImageExtensionEnum):
+    def extension(self, ext : Union[str , ImageExtensionEnum]):
         if isinstance(ext, ImageExtensionEnum):
             self.raw_data['meta']['file_ext'] = ext.value
         elif isinstance(ext, str) : 
