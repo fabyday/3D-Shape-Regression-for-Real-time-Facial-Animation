@@ -1,3 +1,4 @@
+import logging.handlers
 import typing
 from PyQt5.QtWidgets import *
 import time
@@ -13,14 +14,32 @@ import time
 import yaml
 import queue
 import uuid
+import logging
+import signals
 
 
+thread_logger = logging.getLogger("workerLogger")
+thread_logger.setLevel(logging.DEBUG)
+# RotatingFileHandler
+log_max_size = 10 * 1024 * 1024  ## 10MB
+log_file_count = 20
+log_path = "./logs"
+if not os.path.exists(log_path):
+    os.makedirs(log_path)
+
+
+rotatingFileHandler = logging.handlers.RotatingFileHandler(
+    filename= os.path.join(log_path, 'output.log'),
+    maxBytes=log_max_size,
+    backupCount=log_file_count
+)
+thread_logger.addHandler(rotatingFileHandler)
 class Runnable():
     def __init__(self):
         self.m_id = uuid.uuid4()
         self.m_cancel = False 
         self.m_is_completed = False
-        self.m_callback = None 
+        self.m_callback = None
 
     def cancel(self):
         self.m_cancel = True
@@ -37,7 +56,7 @@ class Runnable():
 
     def _run(self):
         if not self.m_cancel:
-            print('runn')
+            thread_logger.debug("uuid : {} function _run".format(self.m_id))
             self.run()
             self.m_is_completed = True
         return self.is_completed()
@@ -69,8 +88,6 @@ class Job(Runnable):
         super().__init__()
         self.m_func = func
     def run(self):
-        print("job run")
-        print(self.m_func)
         return self.m_func()
     
 class Jobs(Runnable):
@@ -84,6 +101,7 @@ class Jobs(Runnable):
         self.m_runnable_list.append(runnable)
 
     def run(self):
+        thread_logger.debug("uuid : {} class : jobs function : run() ".format(self.m_id))
         for runnable in self.m_runnable_list:
             runnable._run()
 
@@ -105,7 +123,7 @@ class Worker(QThread):
     class NotRunnableObjectException(Exception):
         pass 
 
-    jobs_complete_signal = pyqtSignal(uuid.UUID)
+    jobs_complete_signal = pyqtSignal(uuid.UUID, signals.Event)
     job_complete_signal = pyqtSignal(uuid.UUID) #return uuid
     job_cancel_signal = pyqtSignal(uuid.UUID)  #return uuid
 
@@ -124,21 +142,23 @@ class Worker(QThread):
         self.m_parent = parent
         self.m_mutex = QMutex()
 
-    def reserve_job(self, job_o_joblist : Runnable):
-        if isinstance(job_o_joblist, (Runnable, Jobs)):
-            job_list = job_o_joblist
+    def reserve_job(self, job_o_joblist : Runnable, job_finish_event_type = signals.Event()):
+        if isinstance(job_o_joblist, Runnable):
+            job = job_o_joblist
         else:
             raise Worker.NotRunnableObjectException("one of job is not runnable")
 
         self.m_mutex.lock()
-        for job in job_list:
-            self.jobs_queue.put(job_o_joblist)
+        self.jobs_queue.put((job, job_finish_event_type))
         self.m_mutex.unlock()
+        thread_logger.debug("thread job was reserved ")
+
 
     def run(self):
         format_string = "{}-th item is {}"
         while True : 
             self.m_mutex.lock()
+            thread_logger.debug("run thread : job queue size {} ".format(self.jobs_queue.qsize()))
             data = None 
             try :
                 data = self.jobs_queue.get_nowait()
@@ -148,20 +168,24 @@ class Worker(QThread):
             if data is None :
                 time.sleep(0.0001)
                 continue
+
+            (data, event) = data 
+
             for cur_i, runnable in enumerate(data):
+                thread_logger.debug("job task progress : {}/{}".format(cur_i + 1, len(data)))
                 ret = runnable._run()
                 one_base_index = cur_i + 1
                 if ret : 
                     
                     self.job_complete_signal.emit(data.uid)
                     self.job_progress_signal.emit(data.uid, one_base_index, len(data), True, format_string.format(one_base_index, "completed."))
-                    print("emit!")
                 else : 
                     self.job_cancel_signal.emit(data.uid)
                     self.job_progress_signal.emit(data.uid, one_base_index, len(data), True, format_string.format(one_base_index, "canceled."))
-            self.jobs_complete_signal.emit(data.m_id)
             if data.m_callback is not None :
+                thread_logger.debug("job complete and run callback function.")
                 data.m_callback(data)
+            self.jobs_complete_signal.emit(data.m_id, event)
 
 class DummyJob(Runnable):
     def __init__(self):

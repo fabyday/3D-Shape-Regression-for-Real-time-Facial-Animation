@@ -38,9 +38,9 @@ class ImageViewWidget(QGraphicsView):
     def __init__(self, parent, program_data: datamanager.DataManager):
 
         self._scene = QGraphicsScene()
-        super(ImageWidget, self).__init__(self._scene)
+        super().__init__(self._scene)
 
-        self.program_data = program_data
+        self.program_data = program_data 
 
         self.test = QtGui.QPixmap()
         # self.test.load("./test.JPG")

@@ -5,6 +5,7 @@ from PyQt5.QtGui import QImage
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex
 import os 
 import os.path as osp
+import uuid 
 
 
 
@@ -67,7 +68,9 @@ class InspectorWidget(QWidget):
 
     detector_loaded = pyqtSignal(bool)
 
-    def __init__(self, ctx):
+    selected_data_changed = pyqtSignal(uuid.UUID)
+
+    def __init__(self, ctx ):
         super().__init__()
 
         self.m_ctx = ctx
@@ -174,25 +177,22 @@ class InspectorWidget(QWidget):
 
     # event emitter
     def next(self):
-        pass 
+        self.selected_data_changed.emit() 
 
     def prev(self):
-        pass
+        self.selected_data_changed.emit() 
 
     def detect(self):
         pass
 
     def save_data(self):
-        pass
-
-    def save_data(self):
-        pass 
+        self.m_ctx.save_data(self.m_save_root_loc)
 
     def save_data_all(self):
-        pass 
+        self.m_ctx.save_data(self.m_save_root_loc)
 
     def detect_all_lmk_from_entire_images(self):
-        pass 
+        self.m_ctx.detect_all_landmark()
     
     def open_root_dir_and_load(self, pth_name):
         try : 
@@ -209,40 +209,8 @@ class InspectorWidget(QWidget):
     
 
     def open_meta_file(self, pth):
-        available_meta_file_types = [InputMeta, OutputMeta]
-        for cls in available_meta_file_types:
-            meta_cls = cls()
-            try :
-                meta_object = meta_cls.load(pth)
-
-            except UncompatibleMetaData:
-                meta_object = None 
-                continue  
-
-        if  meta_object.type_name == InputMeta.META_NAME: 
-            self.m_ctx.m_input_meta_object = meta_object
-            return meta_object
-        elif  meta_object.type_name == OutputMeta.META_NAME: 
-            self.m_ctx.m_input_meta_object = meta_object
-            return meta_object
-        else:
-            raise UncompatibleMetaData
+        self.m_ctx.load_data_from_meta(pth)
         
-
-
-            
-
-
-    def open_lmk_meta_file(self, pth_name):
-        try : 
-            self.m_landmark_meta[0].setText(pth_name)
-            meta = IctLandmarkMeta()
-            meta.load(pth_name)
-            self.m_ctx.m_landmark_meta_object = meta
-        except UncompatibleMetaData:
-            self.m_landmark_meta[0].setText("")
-            pass 
-
     #################################################################################################
 
     def init_connection(self):
@@ -251,16 +219,16 @@ class InspectorWidget(QWidget):
         self.root_dir_widget.clicked.connect(open_and_find_directory(self, self.open_root_dir_and_load))
         self.save_root_loc.clicked.connect(open_and_find_directory(self, self.open_save_loc))
         self.m_meta_file
-        self.m_landmark_meta[1].clicked.connect(open_and_find_meta(self, self.open_lmk_meta_file))
+        # self.m_landmark_meta[1].clicked.connect(open_and_find_meta(self, self.open_lmk_meta_file))
         
         self.m_prev_btn.clicked.connect(self.prev)
         self.m_next_btn.clicked.connect(self.next)
 
         # self.m_detect_button.clicked.connect()
-        # self.m_detect_all_button.clicked.connect()
+        self.m_detect_all_button.clicked.connect(self.detect_all_lmk_from_entire_images)
 
         # self.m_save_individual_button.clicked.connect()
-        # self.m_save_all_button.clicked.connect()
+        self.m_save_all_button.clicked.connect(self.save_data_all)
 
     @property
     def root_dir_widget(self):

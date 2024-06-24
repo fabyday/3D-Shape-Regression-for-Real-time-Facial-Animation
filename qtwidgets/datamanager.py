@@ -11,10 +11,12 @@ import image
 import landmark
 import uuid 
 import numpy as np 
+from typing import Union
+import signals
 
 def save_landmark(lmk, path):
     root_path = osp.dirname(path)
-    print("root", root_path)
+    # print("root", root_path)
     if not osp.exists(root_path):
         os.makedirs(root_path)
     with open(path, 'w') as fp:
@@ -62,6 +64,10 @@ class DataCollection:
             self.m_uuid = uuid
             self.m_image = None 
             self.m_lmk =  landmark.Landmark()
+
+        @property
+        def unique_id(self):
+            return self.m_uuid
         
         
 
@@ -72,7 +78,7 @@ class DataCollection:
         if len(self.m_data_item) == 0:
             raise DataCollection.NoDataException("data might not be loaded.")
 
-        if isinstance(key_o_idx, uuid.UUID | str):
+        if isinstance(key_o_idx, (uuid.UUID, str)):
             item = self.m_data_item[key_o_idx]
         elif isinstance(key_o_idx, int):
             key, item = list(self.m_data_item.items())[key_o_idx]
@@ -92,7 +98,7 @@ class DataCollection:
         data.m_image.name = item_meta.name
         data.m_image.category = item_meta.category
         data.m_lmk = landmark.Landmark()
-        self.m_data_item[item_meta.unique_id ] = DataCollection.Data()
+        self.m_data_item[item_meta.unique_id ] = data
         
 
     def load_from_lmk_item_meta(self, meta : metadata.LandmarkMeta, item_meta : metadata.LandmarkMeta.LandmarkItemMeta):
@@ -112,17 +118,12 @@ class DataCollection:
             pass 
 
         self.m_data_item[item_meta.unique_id ] = data
-        print(item_meta.unique_id)
 
     def load_from_meta(self, meta : metadata.BaseMeta, item_meta : metadata.BaseItemMeta):
-        print("lmk")
-        print(type(item_meta))
         if isinstance(item_meta, metadata.LandmarkMeta.LandmarkItemMeta):
-            print("lmk")
             self.load_from_lmk_item_meta(meta, item_meta)
 
         elif isinstance(item_meta, metadata.ImageMeta.ImageItemMeta):
-            print("lmk")
             self.load_from_image_item_meta(meta, item_meta)
 
 
@@ -140,14 +141,8 @@ class DataIOFactory():
     def load_from_image_meta(collection : DataCollection, meta_info : metadata.ImageMeta, lazy_load_flag : bool = True):
         ext = meta_info.extension
         jobs_object = qtthread.Jobs()
-
-        print(ext)
-
-
         def run():
-            print("run")
             collection.load_from_meta(meta_info, info)
-            print("run end")
         location = meta_info.file_location
         for info in meta_info.get_item_iterator():
             # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
@@ -161,7 +156,6 @@ class DataIOFactory():
         jobs_object = qtthread.Jobs()
         
         def run():
-            print("run")
             collection.load_from_meta(meta_info, info)
         for info in meta_info.get_item_iterator():
             # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
@@ -287,19 +281,36 @@ class DataManager:
         self.m_data_collection = DataCollection()
         self.m_current_selected_data = None
         self.m_meta = None
-        self.m_load_flag = False 
+        self.m_data_load_flag = False 
+        self.m_detector_load_flag = False 
         
     
     def is_loaded(self):
-        return self.m_load_flag
+        return self.m_data_load_flag
+    
+    def is_detector_loaded(self):
+        return self.m_detector.m_is_loaded
+
     def load_detector(self, pth  =None ):
         self.m_detector.set_path(pth)
-        self.m_worker.reserve_job(LoadDetectJob(self.m_detector))
+        load_job = LoadDetectJob(self.m_detector)
+        self.m_worker.reserve_job(load_job)
+
+
 
     def get_data_collection(self):
         return self.m_data_collection
+    
+    def __len__(self):
+        return len(self.m_data_collection)
+    
+    def __getitem__(self, key_o_idx):
+        pass
+
+
     def get_selected_data(self):
         return self.m_current_selected_data 
+    
     def load_data_from_meta(self, pth):
         """
             return Runnable
@@ -321,15 +332,28 @@ class DataManager:
         jobs = DataIOFactory.load( self.m_data_collection, self.m_meta, False)
         
 
-        # jobs.then(self.__meta_load_finished_callback)
-        self.m_worker.reserve_job(jobs)
+        jobs.then(self.__meta_load_finished_callback)
+        self.m_worker.reserve_job(jobs, )
 
     
     def __meta_load_finished_callback(self, x):
-        print( self.m_data_collection)
         self.m_current_selected_data = self.m_data_collection[0].unique_id
-        print("callbck done")
 
+    def detect_all_landmark(self):
+        jobs = qtthread.Jobs()
+
+        if self.m_detector.m_is_loaded:
+            raise Exception("Detector Not Loaded")
+
+        for data in self.m_data_collection:
+            jobs.add(LandmarkDetectJob(data, self.m_detector))
+        self.m_worker.reserve_job(jobs)
+    def detect_landmark(self, index_o_uuid_key):
+        if self.m_detector.m_is_loaded:
+            raise Exception("Detector Not Loaded")
+        
+        job = LandmarkDetectJob(self.m_data_collection[index_o_uuid_key], self.m_detector)
+        self.m_worker.reserve_job(job)
 
 
     def save_data(self, pth):
@@ -354,3 +378,5 @@ if __name__ == "__main__":
     pt = os.path.join(os.path.dirname(os.path.abspath(__file__)), "test_image")
     manger.load_data_from_meta(pt)
     print(manger)
+    while True:
+     True
