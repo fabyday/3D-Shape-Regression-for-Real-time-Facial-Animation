@@ -333,7 +333,7 @@ class DataManager:
         
 
         jobs.then(self.__meta_load_finished_callback)
-        self.m_worker.reserve_job(jobs, )
+        self.m_worker.reserve_job(jobs, signals.Event(signals.EventType.DATA_LOADED_FROM_META))
 
     
     def __meta_load_finished_callback(self, x):

@@ -7,21 +7,6 @@ import os
 import os.path as osp
 import uuid 
 
-
-
-def check_and_load_meta_file(root_pth_name):
-    if osp.exists(osp.join(root_pth_name, "meta.yaml")):
-        self.data['meta file'].setText("meta.yaml")
-        j_id = int(time.time())
-        self.jobs[j_id] = False
-        cancel_f = self.worker.do_load_image(j_id, [self.program_data.get_cur_index()])
-        self.current_job_item = (j_id , cancel_f)
-        self.upate_ui()
-        self.signal.InspectorLoadMetaData.emit()
-        self.worker.load_detector()
-    else:
-        self.data["meta file"].setText("Not Found.")
-
 def open_and_find_directory(Qt_object, callback):
     # callback input is file name
     #https://stackoverflow.com/questions/64530452/is-there-a-way-to-select-a-directory-in-pyqt-and-show-the-files-within
@@ -197,6 +182,7 @@ class InspectorWidget(QWidget):
     def open_root_dir_and_load(self, pth_name):
         try : 
             self.root_dir_widget = pth_name
+            self.m_ctx.load_data_from_meta(pth_name)
         except  FileNotFoundError:
             return # if path was not founded. pass the loading meta.
         

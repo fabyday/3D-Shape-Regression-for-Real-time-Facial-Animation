@@ -98,7 +98,7 @@ class MyApp(QMainWindow):
         if signals.EventType.DATA_LOADED_FROM_META  in event:
             self.selected_data_chnaged_signal.emit(self.m_data_manager.get_selected_data())
         
-        elif signals.EventType.ALL_LANDMARK_DETECTED in event:
+        if signals.EventType.ALL_LANDMARK_DETECTED in event:
             self.selected_data_chnaged_signal.emit(self.m_data_manager.get_selected_data())
 
             

@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 import metadata
 
-
+import os 
 
 
 class Category():
@@ -50,7 +50,7 @@ class Image :
     
     def _load(self):
         if self.m_image is None :
-            self.m_image = cv2.imread(self.name + self.m_extension.value)
+            self.m_image = cv2.imread(os.path.join(self.m_location, self.name + self.m_extension.value))
             # if self.m_image is None :
                 # raise Image.ImageNotLoadedException("Image is not loaded.")
             if self.m_image is None : 
