@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import *
 import time
 from PyQt5 import QtGui, QtCore
 from PyQt5.QtGui import QImage
-from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex
+from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex, QTimer
 import sys
 import ctypes
 import os.path as osp
@@ -41,7 +41,7 @@ class MyApp(QMainWindow):
         self.setWindowTitle('landmark editor')
         self.resize(int(width*0.8), int(height*0.8))
         self.move(self.screen().geometry().center() - self.frameGeometry().center())
-
+        self.timer = QTimer()
 
         widget = QWidget()
 
@@ -74,7 +74,7 @@ class MyApp(QMainWindow):
         self.status_label = QLabel()
         self.statusbar.addWidget(self.status_label)
         self.statusbar.addPermanentWidget(self.progress_bar)
-
+        self.m_timer = QTimer()
         self.connect_GUI_to_thread()
         self._init_data_control_singal()
 
@@ -110,14 +110,24 @@ class MyApp(QMainWindow):
         
     @pyqtSlot(int, int)#init value, length
     def make_status_progress(self, start, length):
+        if self.timer.isActive():
+            self.timer.disconnect(self.timeout_connection)
+
         self.progress_bar.setRange(start, length)
         self.progress_bar.setValue(start)
         self.progress_bar.setVisible(True)
     
     @pyqtSlot()
     def remove_status_progress(self):
-        self.status_label.setText("")
-        self.progress_bar.setVisible(False)
+        
+        self.timer.setSingleShot(True)
+        self.timer.setInterval(3000)
+        self.timer.start()
+        def reset():
+            self.status_label.setText("")
+            self.progress_bar.setVisible(False)
+
+        self.timeout_connection = self.timer.timeout.connect(reset)
 
 
 

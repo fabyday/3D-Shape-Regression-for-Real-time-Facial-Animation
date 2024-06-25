@@ -86,6 +86,18 @@ class DataCollection:
     
     def __iter__(self):
         pass
+
+    def __len__(self):
+        return len(self.m_data_item.items())
+    
+    def key_to_index(self, uuid_name):
+        self.m_data_item[uuid_name] # check for raise error.
+
+        for i, key in enumerate(self.m_data_item.keys()):
+            if uuid_name == key :
+                return i
+        
+
     
     
     def load_from_image_item_meta(self, meta : metadata.ImageMeta, item_meta : metadata.ImageMeta.ImageItemMeta):
@@ -217,12 +229,17 @@ class Detector():
         self.m_path = pth
 
     def load_detector(self):
-        import dlib
-        if self.m_path == None :
-            self.m_path = "./shape_predictor_68_face_landmarks.dat"
-        self.m_detector = dlib.get_frontal_face_detector()
-        self.m_predictor = dlib.shape_predictor(self.m_path) 
-        self.m_is_loaded = True
+        try : 
+            import dlib
+            if self.m_path == None :
+                self.m_path = "./shape_predictor_68_face_landmarks.dat"
+            self.m_detector = dlib.get_frontal_face_detector()
+            self.m_predictor = dlib.shape_predictor(self.m_path) 
+            self.m_is_loaded = True
+
+        except :
+            self.m_is_loaded = False
+        
 
     def detect(self, data_object: DataCollection.Data):
         
@@ -305,12 +322,21 @@ class DataManager:
         return len(self.m_data_collection)
     
     def __getitem__(self, key_o_idx):
-        pass
+        return self.m_data_collection[key_o_idx]
 
+    def set_selected_data_uuid(self, uuid):
+        self.m_current_selected_data
+    def set_selected_data_from_index(self, index):
+        self.m_current_selected_data
 
-    def get_selected_data(self):
+    def get_selected_data_uuid(self):
         return self.m_current_selected_data 
     
+    def get_selected_data_index(self):
+        return self.m_data_collection.key_to_index(self.m_current_selected_data)
+
+
+
     def load_data_from_meta(self, pth):
         """
             return Runnable

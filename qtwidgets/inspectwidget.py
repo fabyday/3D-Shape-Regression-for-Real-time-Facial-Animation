@@ -162,9 +162,14 @@ class InspectorWidget(QWidget):
 
     # event emitter
     def next(self):
+        index = self.m_ctx.get_selected_data_index()
+        index = 0 if index + 1 >= len(self.m_ctx) else index + 1
+        
         self.selected_data_changed.emit() 
 
     def prev(self):
+        index = self.m_ctx.get_selected_data_index()
+        index = len(self.m_ctx) - 1 if index -1 < 0 else index - 1
         self.selected_data_changed.emit() 
 
     def detect(self):

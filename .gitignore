@@ -20,3 +20,6 @@ qtwidgets/test_metadata/
 reg_regressor_Rt_weak_logger.log
 testdir/
 test_land/
+
+
+logs/

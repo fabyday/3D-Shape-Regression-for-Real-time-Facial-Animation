@@ -162,6 +162,7 @@ class Worker(QThread):
             data = None 
             try :
                 data = self.jobs_queue.get_nowait()
+                self.create_status_bar_signal.emit(0, len(data))
             except:
                 pass 
             self.m_mutex.unlock()
@@ -186,6 +187,7 @@ class Worker(QThread):
                 thread_logger.debug("job complete and run callback function.")
                 data.m_callback(data)
             self.jobs_complete_signal.emit(data.m_id, event)
+            self.remove_status_bar_signal.emit()
 
 class DummyJob(Runnable):
     def __init__(self):
