@@ -25,9 +25,19 @@ class Image :
         self.m_height = 0
         self.m_lazy_load_flag  = lazy_load
 
+    def resize_by_ratio(self, ratio):
+        img = cv2.resize(img, [int(self.m_width/ratio),int(self.m_height/ratio)])
 
-    def resize(self, width):
-        pass
+    def resize(self):
+
+        max_length = max(self.m_height, self.m_width)
+        if max_length > 1000:
+            max_length_ratio = max_length / 1000
+        else :
+            max_length_ratio = 1
+
+        img = cv2.resize(self.image, [int(self.m_width/max_length_ratio),int(self.m_height/max_length_ratio)])
+        return img, max_length_ratio
 
     @property
     def image (self):
@@ -36,7 +46,7 @@ class Image :
     @image.setter
     def image(self, image : np.ndarray):
         if len(image.shape) == 3 :
-            h, w, _ = image.shape
+            h, w, c = image.shape
 
         else :
             h, w  = image.shape 
@@ -59,6 +69,8 @@ class Image :
                 h, w, _ = self.m_image.shape
             else :
                 h, w  = self.m_image.shape 
+            self.m_height = h
+            self.m_width = w
             return self.m_image
         else:
             return self.m_image

@@ -160,17 +160,26 @@ class InspectorWidget(QWidget):
         self.show() 
 
 
+    def _update_inspector_to_current_target(self, index_o_uuid):
+        item = self.m_ctx.get_meta()[index_o_uuid]
+        self.m_category.setText(item.m_parent_category.category_name)
+        self.m_image_name.setText(item.name)
+
     # event emitter
     def next(self):
         index = self.m_ctx.get_selected_data_index()
+        print(len(self.m_ctx))
         index = 0 if index + 1 >= len(self.m_ctx) else index + 1
+        key = self.m_ctx.set_selected_data_from_index(index)
+        self._update_inspector_to_current_target(key)
         
-        self.selected_data_changed.emit() 
+        self.selected_data_changed.emit(key)
 
     def prev(self):
         index = self.m_ctx.get_selected_data_index()
         index = len(self.m_ctx) - 1 if index -1 < 0 else index - 1
-        self.selected_data_changed.emit() 
+        key = self.m_ctx.set_selected_data_from_index(index)
+        self.selected_data_changed.emit(key) 
 
     def detect(self):
         pass
@@ -183,7 +192,9 @@ class InspectorWidget(QWidget):
 
     def detect_all_lmk_from_entire_images(self):
         self.m_ctx.detect_all_landmark()
-    
+        # key = self.m_ctx.get_selected_data()
+        # self.selected_data_changed.emit(key)    
+
     def open_root_dir_and_load(self, pth_name):
         try : 
             self.root_dir_widget = pth_name

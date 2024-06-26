@@ -13,34 +13,15 @@ import yaml
 import qtthread
 import metadata 
 import datamanager
-
-class ImageViewWidget(QGraphicsView):
-    def __init__(self, program_data: datamanager.DataManager, worker : qtthread.Worker):
-
-        self._scene = QGraphicsScene()
-        super(ImageWidget, self).__init__(self._scene)
-        self.worker = worker
-
-        self.worker.lmk_load_finished.connect(self.reload_image)
-        self.worker.lmk_load_finished.connect(self.reload_lmk_to_view)
-
-        self.program_data = program_data
-
-        self.test = QtGui.QPixmap()
-        # self.test.load("./test.JPG")
-        # self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
-        # self._scene.addPixmap()
-        self.img_overlay = self._scene.addPixmap(self.test)
-
-
+import uuid
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
-    def __init__(self, parent, program_data: datamanager.DataManager):
+    def __init__(self, parent, ctx: datamanager.DataManager):
 
         self._scene = QGraphicsScene()
         super().__init__(self._scene)
 
-        self.program_data = program_data 
+        self.m_ctx = ctx 
 
         self.test = QtGui.QPixmap()
         # self.test.load("./test.JPG")
@@ -72,20 +53,22 @@ class ImageViewWidget(QGraphicsView):
 
 
         self.index = -1
-    
 
-    def set_image_index(self, index):
-        self.index = index
+
+        parent.selected_data_changed_signal.connect(self.reload_image)
+
     #qt callback function
-    def reload_image(self):
-        index = self.index
-        image = self.program_data[index]
-        if len(image.img.shape)<3:
-            frame = cv2.cvtColor(image.img, cv2.COLOR_GRAY2RGB)
+    @pyqtSlot(uuid.UUID)
+    def reload_image(self, image_uuid):
+        image = self.m_ctx[image_uuid].m_image
+        if image.image is None :
+            return 
+        if len(image.image)<3:
+            frame = cv2.cvtColor(image.image, cv2.COLOR_GRAY2RGB)
         else:
-            frame = cv2.cvtColor(image.img, cv2.COLOR_BGR2RGB)
-
-        h, w = image.img.shape[:2]
+            frame = cv2.cvtColor(image.image, cv2.COLOR_BGR2RGB)
+        
+        (w,h) = image.shape
         bytesPerLine = 3 * w
 
         qimage = QImage(frame.data, w, h, bytesPerLine, QImage.Format.Format_RGB888)
@@ -93,13 +76,15 @@ class ImageViewWidget(QGraphicsView):
         test = test.fromImage(qimage)
         # self.img_overlay.pixmap().convertFromImage(qimage)
         self.img_overlay.setPixmap(test)
-        self.reload_lmk_to_view()
+        self.reload_lmk_to_view(image_uuid)
     
     # this method will be called by callback and image load function
-    def reload_lmk_to_view(self):
-        index = self.index
-        image = self.program_data[index]
-        lmks = image.lmk
+    def reload_lmk_to_view(self, image_uuid):
+        lmks = self.m_ctx[image_uuid].m_lmk.landmark
+
+        if lmks is None :
+            return 
+
         for lmk, circle in zip(lmks, self.circle_list):
             x = lmk[0]
             y = lmk[1]
@@ -206,14 +191,7 @@ class ImageViewWidget(QGraphicsView):
             line.setVisible(flag)
         
     def initUI(self):
-        print(self.width(), " ", self.height())
         self.test = QtGui.QPixmap()
-        # test.load("./images/all_in_one/expression/GOPR0039.JPG")
-        
-        # main_layout = QVBoxLayout()
-        # main_layout.addWidget(self._scene)
-        # self.setLayout(main_layout)
-
         self.show()
 
     def mousePressEvent(self, event):

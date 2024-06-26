@@ -194,7 +194,7 @@ class Category:
         return self.m_items.keys()
 
     def __getitem__(self, key_o_idx):
-        if isinstance( key_o_idx, str):
+        if isinstance( key_o_idx, uuid.UUID):
             return self.m_items[key_o_idx]
         elif isinstance(key_o_idx, int):
             key = list(self.keys())[key_o_idx]
@@ -232,6 +232,18 @@ class BaseMeta:
         self.m_type = type_name
         self.m_cls_type = self.get_item_meta() if cls_type is None else cls_type
         self.reset()
+
+
+
+    def __getitem__(self, item_uuid):
+        for category in self.m_category_collection:
+            try: 
+                item = category[item_uuid]
+            except:
+                continue 
+        return item
+
+
 
 
     def get_item_meta(self):

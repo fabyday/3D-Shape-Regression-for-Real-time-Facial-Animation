@@ -18,6 +18,10 @@ import uuid
 import imageviewwidget
 import inspectwidget
 import signals
+import logger 
+
+
+tlogger = logger.thread_logger
 class MyApp(QMainWindow):
     
     selected_data_changed_signal = pyqtSignal(uuid.UUID)
@@ -52,6 +56,7 @@ class MyApp(QMainWindow):
         self._init_image_view_ui(layout)
         self._init_inspect_ui(layout)
         self._init_status_ui()
+        self._connect_components()
         self.m_data_manager.load_detector()
 
     def _init_inspect_ui(self, layout):
@@ -63,6 +68,7 @@ class MyApp(QMainWindow):
     def _init_image_view_ui(self, layout):
         self.imagewidget = imageviewwidget.ImageViewWidget(self, self.m_data_manager)
         # imagewidget
+        self.imagewidget.initUI()
         layout.addWidget(self.imagewidget, 7)
     
 
@@ -79,7 +85,7 @@ class MyApp(QMainWindow):
         self._init_data_control_singal()
 
     def _init_data_control_singal(self):
-        # self.worker_thread.job_complete_signal.connect()
+        self.worker_thread.jobs_complete_signal.connect(self.data_completed)
         pass
 
     
@@ -89,17 +95,25 @@ class MyApp(QMainWindow):
         self.worker_thread.remove_status_bar_signal.connect(self.remove_status_progress)
         self.worker_thread.job_progress_signal.connect(self.write_status_progress)
     
-    def connect_components(self):
-        pass
+    def _connect_components(self):
+        self.inspectorwidget.selected_data_changed.connect(self.selected_data_changed)
+
+
+    @pyqtSlot(uuid.UUID)
+    def selected_data_changed(self, cur_data_uuid):
+        self.selected_data_changed_signal.emit(self.m_data_manager.get_selected_data_uuid())
     
     @pyqtSlot(uuid.UUID, signals.Event)
     def data_completed(self, ret_uuid, event):
 
+        tlogger.debug( "main_data_complete")
         if signals.EventType.DATA_LOADED_FROM_META  in event:
-            self.selected_data_chnaged_signal.emit(self.m_data_manager.get_selected_data())
+            tlogger.debug("DATA_LOADED_FROM_META")
+            self.selected_data_changed_signal.emit(self.m_data_manager.get_selected_data_uuid())
         
         if signals.EventType.ALL_LANDMARK_DETECTED in event:
-            self.selected_data_chnaged_signal.emit(self.m_data_manager.get_selected_data())
+            tlogger.debug("ALL_LANDMARK_DETECTED")
+            self.selected_data_changed_signal.emit(self.m_data_manager.get_selected_data_uuid())
 
             
 
@@ -112,7 +126,6 @@ class MyApp(QMainWindow):
     def make_status_progress(self, start, length):
         if self.timer.isActive():
             self.timer.disconnect(self.timeout_connection)
-
         self.progress_bar.setRange(start, length)
         self.progress_bar.setValue(start)
         self.progress_bar.setVisible(True)

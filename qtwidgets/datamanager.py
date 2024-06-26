@@ -8,7 +8,7 @@ import metadata
 import image
 import qtthread
 import image
-import landmark
+import flandmark
 import uuid 
 import numpy as np 
 from typing import Union
@@ -59,11 +59,28 @@ class DataCollection:
     class NoDataException(Exception):
         pass 
     
+    class DataItemIterator():
+        def __init__(self, item_dict:dict):
+            self.m_data_collection = list(item_dict.items())
+            self.m_cur_idx = 0
+            
+
+        def __iter__(self):
+            return self
+        def __next__(self):
+            try : 
+                item = self.m_data_collection[self.m_cur_idx][-1]
+                self.m_cur_idx += 1
+                return item
+            except:
+                raise StopIteration()
+
+
     class Data():
         def __init__(self, uuid):
             self.m_uuid = uuid
             self.m_image = None 
-            self.m_lmk =  landmark.Landmark()
+            self.m_lmk =  flandmark.Landmark()
 
         @property
         def unique_id(self):
@@ -85,11 +102,16 @@ class DataCollection:
         return item    
     
     def __iter__(self):
-        pass
+        return DataCollection.DataItemIterator(self.m_data_item)
 
     def __len__(self):
         return len(self.m_data_item.items())
     
+
+    def index_to_key(self, index):
+        key = list(self.m_data_item.keys())[index]
+        return key
+
     def key_to_index(self, uuid_name):
         self.m_data_item[uuid_name] # check for raise error.
 
@@ -97,7 +119,6 @@ class DataCollection:
             if uuid_name == key :
                 return i
         
-
     
     
     def load_from_image_item_meta(self, meta : metadata.ImageMeta, item_meta : metadata.ImageMeta.ImageItemMeta):
@@ -123,7 +144,7 @@ class DataCollection:
         data.m_image.name = item_meta.name
         data.m_image.category = item_meta.category
         data.m_image.load()
-        data.m_lmk = landmark.Landmark()
+        data.m_lmk = flandmark.Landmark()
         try :
             data.m_lmk.landmark = load_landmark(item_meta.landmark)
         except : 
@@ -153,12 +174,13 @@ class DataIOFactory():
     def load_from_image_meta(collection : DataCollection, meta_info : metadata.ImageMeta, lazy_load_flag : bool = True):
         ext = meta_info.extension
         jobs_object = qtthread.Jobs()
-        def run():
-            collection.load_from_meta(meta_info, info)
+        def run(info):
+            def wrapper():
+                collection.load_from_meta(meta_info, info)
         location = meta_info.file_location
         for info in meta_info.get_item_iterator():
             # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
-            job = qtthread.Job(run)
+            job = qtthread.Job(run(info))
             jobs_object.add(job)
 
         return jobs_object
@@ -167,11 +189,13 @@ class DataIOFactory():
     def load_from_landmark_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, lazy_load_flag : bool = True):
         jobs_object = qtthread.Jobs()
         
-        def run():
-            collection.load_from_meta(meta_info, info)
+        def run(info):
+            def wrapper():
+                collection.load_from_meta(meta_info, info)
+            return wrapper
         for info in meta_info.get_item_iterator():
             # job = qtthread.Job(lambda : collection.load_from_meta(meta_info, info))
-            job = qtthread.Job(run)
+            job = qtthread.Job(run(info))
             jobs_object.add(job)
 
         return jobs_object
@@ -229,32 +253,35 @@ class Detector():
         self.m_path = pth
 
     def load_detector(self):
-        try : 
-            import dlib
-            if self.m_path == None :
-                self.m_path = "./shape_predictor_68_face_landmarks.dat"
-            self.m_detector = dlib.get_frontal_face_detector()
-            self.m_predictor = dlib.shape_predictor(self.m_path) 
-            self.m_is_loaded = True
+        # try : 
+        import dlib
+        if self.m_path == None :
+            self.m_path = "./shape_predictor_68_face_landmarks.dat"
+        self.m_detector = dlib.get_frontal_face_detector()
+        self.m_predictor = dlib.shape_predictor(self.m_path) 
+        self.m_is_loaded = True
 
-        except :
-            self.m_is_loaded = False
+        # except :
+            # self.m_is_loaded = False
         
 
     def detect(self, data_object: DataCollection.Data):
         
+        lmk_size = 68
         h,w = data_object.m_image.shape
-        
-        rects = self.m_detector(data_object.m_image.image, 1)
+        img, ratio = data_object.m_image.resize()
+        rects = self.m_detector(img, 1)
         for i, rect in enumerate(rects):
             l = rect.left()
             t = rect.top()
             b = rect.bottom()
             r = rect.right()
-            shape = self.m_predictor(data_object.m_image.image, rect)
-            for j in range(68):
-                x, y = shape.part(j).x, shape.part(j).y
-                data_object.m_lmk.lmk[j, :] = (x, y)
+            shape = self.m_predictor(img, rect)
+            data_object.m_lmk = flandmark.Landmark()
+            data_object.m_lmk.landmark = np.empty((lmk_size, 2),np.float32)
+            for j in range(lmk_size):
+                x, y = shape.part(j).x*ratio, shape.part(j).y*ratio
+                data_object.m_lmk.landmark[j, :] = (x, y)
     
 
 class LandmarkDetectJob(qtthread.Runnable):
@@ -294,6 +321,10 @@ class DataManager:
     def get_item_iterator(self):
         return self.m_meta.get_item_iterator()
 
+
+    def get_meta(self):
+        return self.m_meta
+
     def reset(self):
         self.m_data_collection = DataCollection()
         self.m_current_selected_data = None
@@ -325,9 +356,14 @@ class DataManager:
         return self.m_data_collection[key_o_idx]
 
     def set_selected_data_uuid(self, uuid):
-        self.m_current_selected_data
+        self.m_current_selected_data = uuid
+        return self.m_current_selected_data
     def set_selected_data_from_index(self, index):
-        self.m_current_selected_data
+        key = self.m_data_collection.index_to_key(index)
+        self.m_current_selected_data = key
+        
+        return self.m_current_selected_data
+
 
     def get_selected_data_uuid(self):
         return self.m_current_selected_data 
@@ -368,18 +404,19 @@ class DataManager:
     def detect_all_landmark(self):
         jobs = qtthread.Jobs()
 
-        if self.m_detector.m_is_loaded:
+        if not self.m_detector.m_is_loaded:
             raise Exception("Detector Not Loaded")
 
         for data in self.m_data_collection:
             jobs.add(LandmarkDetectJob(data, self.m_detector))
-        self.m_worker.reserve_job(jobs)
+        self.m_worker.reserve_job(jobs, job_finish_event_type=signals.Event(signals.EventType.ALL_LANDMARK_DETECTED))
+
     def detect_landmark(self, index_o_uuid_key):
-        if self.m_detector.m_is_loaded:
+        if not self.m_detector.m_is_loaded:
             raise Exception("Detector Not Loaded")
         
         job = LandmarkDetectJob(self.m_data_collection[index_o_uuid_key], self.m_detector)
-        self.m_worker.reserve_job(job)
+        self.m_worker.reserve_job(job, job_finish_event_type=signals.Event(signals.EventType.ALL_LANDMARK_DETECTED))
 
 
     def save_data(self, pth):

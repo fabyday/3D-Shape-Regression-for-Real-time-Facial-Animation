@@ -16,30 +16,19 @@ import queue
 import uuid
 import logging
 import signals
+import logger
+import threading 
 
 
-thread_logger = logging.getLogger("workerLogger")
-thread_logger.setLevel(logging.DEBUG)
-# RotatingFileHandler
-log_max_size = 10 * 1024 * 1024  ## 10MB
-log_file_count = 20
-log_path = "./logs"
-if not os.path.exists(log_path):
-    os.makedirs(log_path)
 
-
-rotatingFileHandler = logging.handlers.RotatingFileHandler(
-    filename= os.path.join(log_path, 'output.log'),
-    maxBytes=log_max_size,
-    backupCount=log_file_count
-)
-thread_logger.addHandler(rotatingFileHandler)
+thread_logger = logger.thread_logger
 class Runnable():
     def __init__(self):
         self.m_id = uuid.uuid4()
         self.m_cancel = False 
         self.m_is_completed = False
         self.m_callback = None
+        
 
     def cancel(self):
         self.m_cancel = True
@@ -141,6 +130,9 @@ class Worker(QThread):
         self.jobs_queue = queue.Queue()
         self.m_parent = parent
         self.m_mutex = QMutex()
+        
+        # self.m_lock = threading.Lock()
+        # self.m_cond = threading.Condition(self.m_lock)
 
     def reserve_job(self, job_o_joblist : Runnable, job_finish_event_type = signals.Event()):
         if isinstance(job_o_joblist, Runnable):
@@ -158,19 +150,19 @@ class Worker(QThread):
         format_string = "{}-th item is {}"
         while True : 
             self.m_mutex.lock()
-            thread_logger.debug("run thread : job queue size {} ".format(self.jobs_queue.qsize()))
+            # thread_logger.debug("run thread : job queue size {} ".format(self.jobs_queue.qsize()))
             data = None 
             try :
                 data = self.jobs_queue.get_nowait()
-                self.create_status_bar_signal.emit(0, len(data))
             except:
-                pass 
+                pass
             self.m_mutex.unlock()
             if data is None :
                 time.sleep(0.0001)
                 continue
 
             (data, event) = data 
+            self.create_status_bar_signal.emit(0, len(data))
 
             for cur_i, runnable in enumerate(data):
                 thread_logger.debug("job task progress : {}/{}".format(cur_i + 1, len(data)))
