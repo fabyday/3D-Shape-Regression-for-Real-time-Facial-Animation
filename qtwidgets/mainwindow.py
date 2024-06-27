@@ -60,7 +60,7 @@ class MyApp(QMainWindow):
         self.m_data_manager.load_detector()
 
     def _init_inspect_ui(self, layout):
-        self.inspectorwidget = inspectwidget.InspectorWidget(self.m_data_manager)
+        self.inspectorwidget = inspectwidget.InspectorWidget(self.m_data_manager, self)
         self.inspectorwidget.init_ui()
         layout.addWidget(self.inspectorwidget, 3)
 

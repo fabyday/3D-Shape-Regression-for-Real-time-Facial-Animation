@@ -3,6 +3,9 @@ import numpy as np
 import metadata
 
 import os 
+import logger
+
+
 
 
 class Category():

@@ -6,6 +6,13 @@ import yaml
 import inspect
 import uuid
 from typing import Union, Optional
+import logger
+
+
+
+meta_logger = logger.root_logger.getChild("metadata")
+
+
 
 def is_meta_file(path):
     if osp.isfile(path) and osp.splitext(osp.basename(path))[-1] == "yaml": # check extension file
@@ -173,6 +180,7 @@ class Category:
     def add_item(self, item : BaseItemMeta):
         if isinstance(item, self.m_cls): 
             self.m_items[item.unique_id] = item
+            item.m_parent_category = self
         else:
             raise 
     def __iter__(self):

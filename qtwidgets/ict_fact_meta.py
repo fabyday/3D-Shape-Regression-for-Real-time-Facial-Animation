@@ -16,13 +16,26 @@ class BaseFaceMeta:
         def name(self):
             return self.m_name
 
-        @name.setter
-        def name (self, name : str) :
-            self.m_name = name
         
-        def append_child_hierachy(self, data ): # BaseFaceMeta.ComponentMetaItem
-            self.m_data[data.name] = self.m_data 
+        def deserialize(self, name, meta):
+            self.m_name = name
+            if isinstance(meta, list ) : # is means end-points
+                self.m_indice_list = meta 
+                return 
+        
+            keys = list(meta.keys())
+            
+            if meta.get("full_index", False):
+                self.m_indice_list = meta.get("full_index")
 
+            #if full_index exists
+            keys = list(filter(lambda x : x != "full_index", keys))
+            for key in keys:
+                item = BaseFaceMeta.ComponentMetaItem()
+                item.deserialize(key, meta[key])
+                self.m_data[key] = item
+
+      
         @property
         def keys(self):
             return self.m_data.keys() 
@@ -78,20 +91,43 @@ class BaseFaceMeta:
 class IctFaceMeta(BaseFaceMeta):
     def __init__(self):
         super().__init__()
-        self.m_components_hierachy = None 
-
+        self.m_components_hierachy = {} 
+        self.m_full_index = None 
 
     def load_from_file(self, pth):
         super().load_from_file(pth)
+        meta = self.m_raw_data['meta']['ict_landmark_index']
+        keys = list(meta.keys())
+        keys = list(filter(lambda x : x != "full_index", keys))
 
-        self.m_components_hierachy = BaseFaceMeta.ComponentMetaItem("ict_landmark")
+
+        self.m_full_index = meta['full_index']
+        for key in keys:
+            item = BaseFaceMeta.ComponentMetaItem()
+            item.deserialize(key, meta[key])
+            self.m_components_hierachy[key] = item
+            
+
+
+
 
 
 
     def __getitem__(self, key):
-
-        pass 
+        meta = self.m_raw_data['meta']['ict_landmark_index']
+        return meta[key]
 
 
     def component_name_list(self):
-        self.m_raw_data['meta']
+        meta = self.m_raw_data['meta']['ict_landmark_index']
+        keys = list(meta.keys())
+        keys = list(filter(lambda x : x != "full_index", keys))
+        return keys 
+        
+
+
+
+if __name__ == "__main__":
+    face_meta = IctFaceMeta()
+    face_meta.load_from_file("ict_lmk_info.yaml")
+    print("test")

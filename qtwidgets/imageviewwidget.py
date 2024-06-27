@@ -14,6 +14,9 @@ import qtthread
 import metadata 
 import datamanager
 import uuid
+import logger 
+image_logger = logger.root_logger.getChild("image view")
+
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
     def __init__(self, parent, ctx: datamanager.DataManager):
@@ -53,6 +56,7 @@ class ImageViewWidget(QGraphicsView):
 
 
         self.index = -1
+        image_logger.info("image view was initialized")
 
 
         parent.selected_data_changed_signal.connect(self.reload_image)
@@ -76,6 +80,7 @@ class ImageViewWidget(QGraphicsView):
         test = test.fromImage(qimage)
         # self.img_overlay.pixmap().convertFromImage(qimage)
         self.img_overlay.setPixmap(test)
+        image_logger.debug("action : reload_image ")
         self.reload_lmk_to_view(image_uuid)
     
     # this method will be called by callback and image load function
@@ -96,8 +101,10 @@ class ImageViewWidget(QGraphicsView):
             p1, p2 = ll.connected_pts
             ll.setLine(p1.pos().x(), p1.pos().y(), p2.pos().x(), p2.pos().y())
             ll.setVisible(True)
+        image_logger.debug("action : reload landmark to view ")
 
     def reset_image_configuration(self):
+        image_logger.debug("action : reset image configuration ")
         self.image_scale_factor = 1.0
         pixel = 10
         self.circle_list  = []

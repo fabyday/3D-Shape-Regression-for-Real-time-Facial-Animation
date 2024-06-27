@@ -13,6 +13,12 @@ import uuid
 import numpy as np 
 from typing import Union
 import signals
+import ict_fact_meta
+import logger
+
+
+data_logger =logger.root_logger.getChild("datamanager")
+
 
 def save_landmark(lmk, path):
     root_path = osp.dirname(path)
@@ -158,6 +164,7 @@ class DataCollection:
 
         elif isinstance(item_meta, metadata.ImageMeta.ImageItemMeta):
             self.load_from_image_item_meta(meta, item_meta)
+
 
 
 
@@ -430,7 +437,20 @@ class DataManager:
 
         jobs = DataIOFactory.save(self.m_meta) # save data
         self.m_worker.reserve_job(jobs)
+        data_logger.debug("reserve save_data on thread.")
     
+
+    def load_landmark_meta(self, pth):
+        self.m_landmark_structure_meta = ict_fact_meta.IctFaceMeta()
+        self.m_landmark_structure_meta.load_from_file(pth)
+        data_logger.debug("load landmark structure meta %s", pth)
+
+
+    def get_landmark_structure_meta(self):
+        if hasattr(self, "m_landmark_structure_meta"):
+            return self.m_landmark_structure_meta
+        raise Exception("File Not Loaded Error.")
+
 
 
 
