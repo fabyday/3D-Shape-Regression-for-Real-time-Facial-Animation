@@ -43,7 +43,10 @@ class ImageViewWidget(QGraphicsView):
         self.inner_lower_side_brush = QtGui.QPen(QtGui.QColor(255,255,0))
         self.outer_lower_side_brush = QtGui.QPen(QtGui.QColor(0,0,255))
         
-        
+        self.m_color_list = [self.inner_upper_side_brush, 
+                             self.inner_lower_side_brush,
+                             self.outer_upper_side_brush,
+                             self.outer_lower_side_brush,]
 
 
         # self.reset_image_configuration()
@@ -86,7 +89,7 @@ class ImageViewWidget(QGraphicsView):
     # this method will be called by callback and image load function
     def reload_lmk_to_view(self, image_uuid):
         lmks = self.m_ctx[image_uuid].m_lmk.landmark
-
+        
         if lmks is None :
             return 
 
@@ -110,25 +113,12 @@ class ImageViewWidget(QGraphicsView):
         self.circle_list  = []
         self.lines = []
         import random
-        
-        # self.program_data.
-        full_index = self.program_data.image_collection.full_index
-        eye = self.program_data.image_collection.eye
-        contour = self.program_data.image_collection.contour
-        mouse = self.program_data.image_collection.mouse
-        eyebrow = self.program_data.image_collection.eyebrow
-        nose = self.program_data.image_collection.nose
-        for i in range(len(full_index)):
-            test1 = random.randrange(0, 200)
-            test2 = random.randint(0, 200)
-            circle = self._scene.addEllipse(QtCore.QRectF(-pixel/2, -pixel/2, pixel, pixel),self.pen, self.brush)
-            circle.setPos(test1, test2)
-            circle.setZValue(1)
-            circle.num = i
-            circle.connected_line = set()
-            self.circle_list.append(circle)
-        
-        def create_line(index_list, pen):
+
+
+        def create_line(color_index, vert_indice):
+            index_list = vert_indice
+            pen = self.m_color_list[color_index]
+
             for i, (p_i, p_j) in enumerate(zip( index_list[:-1], index_list[1:] )):
                 t1 = self.circle_list[p_i]
                 t2 = self.circle_list[p_j]
@@ -140,48 +130,32 @@ class ImageViewWidget(QGraphicsView):
                 ll.connected_pts.append(t1)
                 ll.connected_pts.append(t2)
                 self.lines.append(ll)     
+        def rec_(lmk_struct , key_list):
+            for key in key_list:
+                component = lmk_struct[key]
+                if not component.is_end_component():
+                    rec_(component, component.keys())
+                else :
+                    create_line(component.get_type().value, component.get_indice_list())
+    
 
-        contour_full = contour['full_index']
-        l_eye_upper = eye['left_eye']['upper_eye']
-        l_eye_lower = eye['left_eye']['lower_eye']
-        r_eye_upper = eye['right_eye']['upper_eye']
-        r_eye_lower = eye['right_eye']['lower_eye']
-        outer_upper_mouse = mouse['outer_upper_mouse']
-        outer_lower_mouse = mouse['outer_lower_mouse']
-        inner_upper_mouse = mouse['inner_upper_mouse']
-        inner_lower_mouse = mouse['inner_lower_mouse']
+        landmark_structure = self.m_ctx.get_landmark_structure_meta()
+        full_index = landmark_structure.get_full_index()
+        for i in range(len(full_index)):
+            test1 = random.randrange(0, 200)
+            test2 = random.randint(0, 200)
+            circle = self._scene.addEllipse(QtCore.QRectF(-pixel/2, -pixel/2, pixel, pixel),self.pen, self.brush)
+            circle.setPos(test1, test2)
+            circle.setZValue(1)
+            circle.num = i
+            circle.connected_line = set()
+            self.circle_list.append(circle)
+        
 
-        nose_vertical = nose['vertical']
-        nose_hoizontal = nose['horizontal']
+        landmark_structure = self.m_ctx.get_landmark_structure_meta()
+        rec_(landmark_structure, landmark_structure.component_name_list())
+  
 
-        left_eyebrow = eyebrow['left_eyebrow']['full_index']
-        right_eyebrow = eyebrow['right_eyebrow']['full_index']
-
-        create_line(left_eyebrow, self.outer_lower_side_brush)
-        create_line(right_eyebrow, self.outer_lower_side_brush)
-
-        create_line(nose_vertical, self.outer_upper_side_brush)
-        create_line(nose_hoizontal, self.outer_lower_side_brush)
-
-        create_line(contour_full, self.outer_upper_side_brush)
-        create_line(l_eye_upper, self.outer_upper_side_brush)
-        create_line(l_eye_lower, self.outer_lower_side_brush)
-        create_line(r_eye_upper, self.outer_upper_side_brush)
-        create_line(r_eye_lower, self.outer_lower_side_brush)
-        create_line(outer_upper_mouse, self.outer_upper_side_brush)
-        create_line(outer_lower_mouse, self.outer_lower_side_brush)
-        create_line(inner_upper_mouse, self.inner_upper_side_brush)
-        create_line(inner_lower_mouse, self.inner_lower_side_brush)
-        # for i, (t1,t2) in enumerate(zip(self.circle_list[:-1], self.circle_list[1:])):
-        #     e = t1.x()
-        #     line = QtCore.QLineF(t1.x(), t1.y(), t2.x(), t2.y())
-        #     ll = self._scene.addLine(line, self.pen)
-        #     t1.connected_line.add(ll)
-        #     t2.connected_line.add(ll)
-        #     ll.connected_pts = []
-        #     ll.connected_pts.append(t1)
-        #     ll.connected_pts.append(t2)
-        #     self.lines.append(ll)     
 
     def circle_line_edit(self, changed_pts):
         line_set = changed_pts.connected_line

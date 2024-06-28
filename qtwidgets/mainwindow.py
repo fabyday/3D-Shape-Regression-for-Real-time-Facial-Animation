@@ -58,6 +58,8 @@ class MyApp(QMainWindow):
         self._init_status_ui()
         self._connect_components()
         self.m_data_manager.load_detector()
+        self.imagewidget.reset_image_configuration()
+
 
     def _init_inspect_ui(self, layout):
         self.inspectorwidget = inspectwidget.InspectorWidget(self.m_data_manager, self)
@@ -97,8 +99,11 @@ class MyApp(QMainWindow):
     
     def _connect_components(self):
         self.inspectorwidget.selected_data_changed.connect(self.selected_data_changed)
-
-
+        self.inspectorwidget.load_landmark_meta.connect(self.load_lmk_meta)
+    
+    @pyqtSlot()
+    def load_lmk_meta(self):
+        self.imagewidget.reset_image_configuration()
     @pyqtSlot(uuid.UUID)
     def selected_data_changed(self, cur_data_uuid):
         self.selected_data_changed_signal.emit(self.m_data_manager.get_selected_data_uuid())

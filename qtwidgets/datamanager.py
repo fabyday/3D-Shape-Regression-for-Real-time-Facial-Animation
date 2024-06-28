@@ -23,6 +23,8 @@ data_logger =logger.root_logger.getChild("datamanager")
 def save_landmark(lmk, path):
     root_path = osp.dirname(path)
     # print("root", root_path)
+    data_logger = ("save landmark.")
+    data_logger = ("location %s", root_path)
     if not osp.exists(root_path):
         os.makedirs(root_path)
     with open(path, 'w') as fp:
@@ -220,11 +222,15 @@ class DataIOFactory():
     def save_from_landmark_meta(collection : DataCollection, meta_info : metadata.LandmarkMeta, location : str = None ):
         jobs = qtthread.Jobs()
         extension = meta_info.extension
-        for info in meta_info : 
+        path = meta_info.file_location
+        if osp.isfile(meta_info.file_location):
+            path = osp.dirname(path)
+        
+        for info in meta_info.get_item_iterator() : 
             lmk_name =  info.name
             try : 
                 uuid = info.unique_id
-                f = lambda : save_landmark(collection[uuid].m_landmark.landmark, info.name)
+                f = lambda : save_landmark(collection[uuid].m_lmk.landmark, osp.join(path, info.landmark))
                 jobs.add(qtthread.Job(f))
             except:
                 pass 
@@ -435,7 +441,7 @@ class DataManager:
             os.makedirs(pth)
         self.m_meta.write_meta(pth) # save meta
 
-        jobs = DataIOFactory.save(self.m_meta) # save data
+        jobs = DataIOFactory.save(self.m_data_collection, self.m_meta) # save data
         self.m_worker.reserve_job(jobs)
         data_logger.debug("reserve save_data on thread.")
     

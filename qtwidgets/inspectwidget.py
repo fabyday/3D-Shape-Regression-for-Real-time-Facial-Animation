@@ -59,7 +59,7 @@ def open_and_find_meta(Qt_object, callback):
 class InspectorWidget(QWidget):
 
     detector_loaded = pyqtSignal(bool)
-
+    load_landmark_meta = pyqtSignal()
     selected_data_changed = pyqtSignal(uuid.UUID)
 
     def __init__(self, ctx, parent ):
@@ -73,6 +73,7 @@ class InspectorWidget(QWidget):
         project_root_path = osp.abspath(osp.join(osp.dirname(__file__), ".."))
         landmark_default_path = osp.join(project_root_path, "ict_lmk_info.yaml")
         self.m_ctx.load_landmark_meta(landmark_default_path)
+        self.load_landmark_meta.emit()
         self.m_landmark_meta = [QLineEdit(landmark_default_path), QPushButton("...")]
         self.m_landmark_meta[0].setReadOnly(True)
         

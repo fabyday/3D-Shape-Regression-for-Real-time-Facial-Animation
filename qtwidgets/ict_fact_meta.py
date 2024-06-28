@@ -3,11 +3,29 @@ import os
 import os.path as osp 
 import yaml 
 import typing 
+import enum 
+
+
+
+class ComponentEnum(enum.Enum):
+    INNER_UPPER=0
+    INNER_LOWER=1
+    OUTER_UPPER=2
+    OUTER_LOWER=3
+    UPPER = 2
+    LOWER = 3
+    VERTICAL = 3
+    HORIZONTAL = 3
+    JUST_LINE = 3
+    NOT_A_END_COMPOENT = 8
+
 class BaseFaceMeta:
 
 
 
     class ComponentMetaItem():
+
+        COMPONENT_ENUM = {"inner":0}
         def __init__(self, name = ""):
             self.m_name = name
             self.m_data = {}
@@ -15,6 +33,29 @@ class BaseFaceMeta:
         @property
         def name(self):
             return self.m_name
+
+        def get_type(self):
+            if self.m_name.find("inner_upper"):
+                return ComponentEnum["INNER_UPPER"]
+            elif self.m_name.find("inner_lower"):
+                return ComponentEnum["INNER_LOWER"]
+            elif self.m_name.find("outer_upper"):
+                return ComponentEnum["OUTER_UPPER"]
+            elif self.m_name.find("outer_lower"):
+                return ComponentEnum["LOWER"]
+            elif self.m_name.find("lower"):
+                return ComponentEnum["LOWER"]
+            elif self.m_name.find("upper"):
+                return ComponentEnum["LOWER"]
+            elif self.m_name.find("vertical"):
+                return ComponentEnum["VERTICAL"]
+            elif self.m_name.find("horizontal"):
+                return ComponentEnum["HORIZONTAL"]
+            else : 
+                if self.is_end_component():
+                    return ComponentEnum["JUST_LINE"]
+                else :
+                    return ComponentEnum["NOT_A_END_COMPOENT"]
 
         
         def deserialize(self, name, meta):
@@ -35,8 +76,12 @@ class BaseFaceMeta:
                 item.deserialize(key, meta[key])
                 self.m_data[key] = item
 
+        def get_component_name(self):
+            return list(self.m_data.keys())
+        
+        def is_end_component(self):
+            return True if len(self.m_data.items()) == 0 else False
       
-        @property
         def keys(self):
             return self.m_data.keys() 
         
@@ -47,12 +92,12 @@ class BaseFaceMeta:
             return self.m_indice_list
 
         def __getitem__(self, key : str): 
-            keys = key.split(".")
-            if len(keys) >= 2:
-                key, keys = keys 
-                
-            return self.m_data[key][keys]
+            return self.m_data[key]
 
+        def __iter__(self):# shallow iter
+            pass 
+
+    
     DEFAULT_META_NAME = "meta.yaml"
     def __init__(self):
         self.m_raw_data = None 
@@ -82,9 +127,25 @@ class BaseFaceMeta:
 
     # key sep is .
     def __getitem__(self, key):
-        pass 
+        return NotImplemented
 
     def component_name_list(self):
+        return NotImplemented
+
+    def get_full_index(self):
+        return NotImplemented
+    
+
+    def inner_component_callback(self, callback):
+        pass
+
+    def outer_component_callback(self, callback):
+        pass 
+
+    def upper_component_callback(self, callback):
+        pass 
+
+    def lower_component_callback(self, callback):
         pass 
 
 
@@ -106,16 +167,14 @@ class IctFaceMeta(BaseFaceMeta):
             item = BaseFaceMeta.ComponentMetaItem()
             item.deserialize(key, meta[key])
             self.m_components_hierachy[key] = item
-            
-
-
-
+    
+    def get_full_index(self):
+        return self.m_full_index
 
 
 
     def __getitem__(self, key):
-        meta = self.m_raw_data['meta']['ict_landmark_index']
-        return meta[key]
+        return self.m_components_hierachy[key]
 
 
     def component_name_list(self):
@@ -123,8 +182,7 @@ class IctFaceMeta(BaseFaceMeta):
         keys = list(meta.keys())
         keys = list(filter(lambda x : x != "full_index", keys))
         return keys 
-        
-
+    
 
 
 if __name__ == "__main__":

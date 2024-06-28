@@ -356,9 +356,9 @@ class BaseMeta:
                 os.makedirs(osp.dirname(path))
             save_path = path
 
-
+        self.m_location = save_path
         dict_items = self.m_category_collection.serialize()
-        self.raw_data["images_name"] = dict_items
+        self.raw_data['meta']["images_name"] = dict_items
         with open(save_path, "w") as fp: 
             yaml.dump(self.m_raw_data, fp)
         return True 
@@ -445,7 +445,7 @@ class LandmarkMeta(BaseMeta):
     
     def create(self):
         super().create()
-        self.m_raw_data['images_name'] = dict()
+        self.m_raw_data['meta']['images_name'] = dict()
 
     def open_meta(self, path):
         super().open_meta(path)
