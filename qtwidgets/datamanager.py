@@ -275,16 +275,16 @@ class Detector():
         self.m_path = pth
 
     def load_detector(self):
-        # try : 
-        import dlib
-        if self.m_path == None :
-            self.m_path = "./shape_predictor_68_face_landmarks.dat"
-        self.m_detector = dlib.get_frontal_face_detector()
-        self.m_predictor = dlib.shape_predictor(self.m_path) 
-        self.m_is_loaded = True
+        try : 
+            import dlib
+            if self.m_path == None :
+                self.m_path = "./shape_predictor_68_face_landmarks.dat"
+            self.m_detector = dlib.get_frontal_face_detector()
+            self.m_predictor = dlib.shape_predictor(self.m_path) 
+            self.m_is_loaded = True
 
-        # except :
-            # self.m_is_loaded = False
+        except :
+            self.m_is_loaded = False
         
 
     def detect(self, data_object: DataCollection.Data, landmark_meta_info : ict_fact_meta.BaseFaceMeta):

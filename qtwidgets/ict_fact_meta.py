@@ -6,7 +6,6 @@ import typing
 import enum 
 
 import igl
-
 class ComponentEnum(enum.Enum):
     INNER_UPPER=0
     INNER_LOWER=1
@@ -26,10 +25,11 @@ class BaseFaceMeta:
     class ComponentMetaItem():
 
         COMPONENT_ENUM = {"inner":0}
-        def __init__(self, name = ""):
+        def __init__(self, name = "", root_flag = True):
             self.m_name = name
             self.m_data = {}
             self.m_indice_list = []
+            self.m_root_flag =  root_flag
         @property
         def name(self):
             return self.m_name
@@ -72,7 +72,7 @@ class BaseFaceMeta:
             #if full_index exists
             keys = list(filter(lambda x : x != "full_index", keys))
             for key in keys:
-                item = BaseFaceMeta.ComponentMetaItem()
+                item = BaseFaceMeta.ComponentMetaItem(root_flag=False)
                 item.deserialize(key, meta[key])
                 self.m_data[key] = item
 
@@ -89,14 +89,73 @@ class BaseFaceMeta:
             """
                 append child list
             """
-            return self.m_indice_list
+
+            if len(self.m_indice_list):
+                return self.m_indice_list
+            
+            if len(self.m_data) : 
+                indice = [] 
+                for key, item in self.m_data:
+                    indice += item.get_indice_list()
+                return list(set(indice))
+            return []
+        
 
         def __getitem__(self, key : str): 
             return self.m_data[key]
 
         def __iter__(self):# shallow iter
             pass 
+        
+        def get_vertex_contained_index_hierachy(self, v_index):
+            pass 
+        
+        def __contains__(self, item):
+            if len(self.m_indice_list) != 0 :
+                if item in self.m_indice_list:
+                    return True 
+                else : 
+                    pass 
+            else :
+                if not self.is_end_component():
+                    pass
+        def __is_children_linked(self):
+            pass 
 
+        def find_linked_index(self, v1_index, v2_index):
+            existence_check = True
+            if self.m_root_flag:
+                check1 = v1_index in self.m_indice_list
+                check2 = v2_index in self.m_indice_list
+                existence_check = check1 and check2 
+
+            
+            v_contained_key = ("", "")
+            if existence_check:
+                #check cateogry where v idnex is laid.
+                for key, item in self.m_data:
+                    if v1_index in item:
+                        v_contained_key[0] = key
+                    if v2_index in item : 
+                        v_contained_key[1] = key
+            
+            else :
+                return []
+
+            if v_contained_key[0] == v_contained_key[1]:
+                self.m_data[v_contained_key[0]].find_linked_index(v1_index, v2_index)
+            
+            # self
+            
+
+
+            check = v1_index in self.m_indice_list
+            cateogry_v1_contained = ""
+            category_v2_contained = "" 
+
+
+
+            
     
     DEFAULT_META_NAME = "meta.yaml"
     def __init__(self):

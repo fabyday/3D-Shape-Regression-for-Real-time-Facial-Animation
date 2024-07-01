@@ -35,6 +35,10 @@ class SELECT_TYPE(Enum):
 
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
+
+
+
+    edit_mode_and_selected_type_changed_signal = pyqtSignal(ImageEditMode, SELECT_TYPE)
     def __init__(self, parent, ctx: datamanager.DataManager ):
 
         self._scene = QGraphicsScene()
@@ -261,23 +265,29 @@ class ImageViewWidget(QGraphicsView):
         scale +=  self.scale_increase_size * (ratio)
         self.scale(scale, scale)
 
+    
+
 
     def keyPressEvent(self, e):
         key = e.key()
         template_logging_str = "image viewer action : %s"
+        mode_changed = True
         if key == ord("R"):
             image_logger.info(template_logging_str,  "rotation mode")
             self.m_mode = ImageEditMode.ROTATION
+
         elif key == ord("G"):
             image_logger.info (template_logging_str , "translation mode")
             self.m_mode = ImageEditMode.TRANSLATION
         elif key == ord("S") : 
             image_logger.info(template_logging_str, "select mode")
             self.m_mode = ImageEditMode.SELECT
-        
+        else :
+            mode_changed = False
+
+        select_type_changed = True
         if self.m_mode == ImageEditMode.SELECT:
             modifiers = e.modifiers()
-
             if modifiers == QtCore.Qt.ShiftModifier:
             
                 self.m_select_mode = SELECT_TYPE.SELECT_MULTIPLE
@@ -290,15 +300,39 @@ class ImageViewWidget(QGraphicsView):
                 pass 
             elif modifiers == QtCore.Qt.MetaModifier:
                 pass 
+            else :
+                select_type_changed = False 
+        else : 
+            select_type_changed =  False 
+        if select_type_changed or mode_changed : 
+            self.edit_mode_and_selected_type_changed_signal.emit(self.m_mode, self.m_select_mode)
+
+        super(ImageViewWidget, self).keyPressEvent(e)
+
+
     def keyReleaseEvent(self, e):
-        key = e.key()
+
+        image_logger.info(str(e.key()))
         template_logging_str = "image viewer action : %s"
+        mode_changed = False 
         if self.m_mode == ImageEditMode.SELECT:
-            if key == QtCore.Qt.ShiftModifier:
-                self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
-            elif key == QtCore.Qt.AltModifier:
-                self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
-            image_logger.info(template_logging_str, "reset default select mode")
+            modifiers = e.modifiers()
+            if modifiers == QtCore.Qt.NoModifier:
+                if  self.m_select_mode == SELECT_TYPE.SELECT_DEFAULT:
+                    pass 
+                else : 
+                    self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
+                    mode_changed = True 
+        else : 
+            mode_changed = False 
+
+        if mode_changed:
+            self.edit_mode_and_selected_type_changed_signal.emit(self.m_mode, self.m_select_mode)
+
+
+
+    def update_viewer_infos(self):
+        self.edit_mode_and_selected_type_changed_signal.emit(self.m_mode, self.m_select_mode)
 if __name__ == "__main__":
 
 

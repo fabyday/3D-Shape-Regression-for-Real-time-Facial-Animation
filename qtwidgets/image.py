@@ -14,7 +14,7 @@ class Category():
 
 
 class Image :
-
+    
     class ImageNotLoadedException(Exception):
         pass 
 

@@ -7,6 +7,7 @@ import os
 import os.path as osp
 import logger 
 import uuid 
+from imageviewwidget import ImageEditMode,SELECT_TYPE
 import typing
 from PyQt5.QtWidgets import QWidget, QMessageBox
 
@@ -71,10 +72,14 @@ class InspectorWidget(QWidget):
 
         
         project_root_path = osp.abspath(osp.join(osp.dirname(__file__), ".."))
-        landmark_default_path = osp.join(project_root_path, "ict_lmk_info.yaml")
-        self.m_ctx.load_landmark_meta(landmark_default_path)
-        self.load_landmark_meta.emit()
-        self.m_landmark_meta = [QLineEdit(landmark_default_path), QPushButton("...")]
+        try : 
+            landmark_default_path = osp.join(project_root_path, "ict_lmk_info.yaml")
+            self.m_ctx.load_landmark_meta(landmark_default_path)
+            self.load_landmark_meta.emit()
+            self.m_landmark_meta = [QLineEdit(landmark_default_path), QPushButton("...")]
+        except : 
+            self.m_landmark_meta = [QLineEdit("Not Found."), QPushButton("...")]
+            
         self.m_landmark_meta[0].setReadOnly(True)
         
         self.m_root_dir[0].setReadOnly(True)
@@ -94,6 +99,11 @@ class InspectorWidget(QWidget):
         self.m_next_btn = QPushButton("Next")
 
         self.m_image_info  = [QLabel("image number"), QLineEdit("?"), QLabel("/"), QLabel("?")]
+        self.m_mode_label  = QLabel("mode info")
+        self.m_edit_mode  = [ QLabel("edit type"), QLineEdit("") ]
+        self.m_select_type  = [ QLabel("select type"), QLineEdit("") ]
+        self.m_edit_mode[-1].setReadOnly(True)
+        self.m_select_type[-1].setReadOnly(True)
 
         
         self.m_detect_button = QPushButton("detect")
@@ -134,6 +144,21 @@ class InspectorWidget(QWidget):
         layout_info.addRow("Landmark Meta file", layout3)
         layout_info.addRow("Image name", self.m_image_name)
         layout_info.addRow("Category", self.m_category)
+
+        select_info_root_layout = QVBoxLayout()
+        select_info_root_layout.addWidget(self.m_mode_label)
+        
+        
+        select_info_layout = QHBoxLayout()
+        select_info_layout.addWidget(self.m_edit_mode[0])
+        select_info_layout.addWidget(self.m_edit_mode[1])
+
+        select_info_layout.addWidget(self.m_select_type[0])
+        select_info_layout.addWidget(self.m_select_type[1])
+
+        select_info_root_layout.addLayout(select_info_layout)
+
+        main_layout.addLayout(select_info_root_layout)
 
 
 
@@ -267,6 +292,11 @@ class InspectorWidget(QWidget):
 
     def open_meta_file(self, pth):
         self.m_ctx.load_data_from_meta(pth)
+
+    pyqtSlot(ImageEditMode, SELECT_TYPE)
+    def mode_setup(self, edit_mode:ImageEditMode, select_type : SELECT_TYPE):
+        self.m_edit_mode[1].setText(edit_mode.name)
+        self.m_select_type[1].setText(select_type.name)
         
     #################################################################################################
 

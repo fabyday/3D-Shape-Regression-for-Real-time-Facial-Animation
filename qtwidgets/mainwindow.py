@@ -59,6 +59,7 @@ class MyApp(QMainWindow):
         self._connect_components()
         self.m_data_manager.load_detector()
         self.imagewidget.reset_image_configuration()
+        self._init_viewer_infos()
 
 
     def _init_inspect_ui(self, layout):
@@ -87,6 +88,10 @@ class MyApp(QMainWindow):
         self.connect_GUI_to_thread()
         self._init_data_control_singal()
 
+
+    def _init_viewer_infos(self):
+        self.imagewidget.update_viewer_infos()
+
     def _init_data_control_singal(self):
         self.worker_thread.jobs_complete_signal.connect(self.data_completed)
         pass
@@ -101,6 +106,7 @@ class MyApp(QMainWindow):
     def _connect_components(self):
         self.inspectorwidget.selected_data_changed.connect(self.selected_data_changed)
         self.inspectorwidget.load_landmark_meta.connect(self.load_lmk_meta)
+        self.imagewidget.edit_mode_and_selected_type_changed_signal.connect(self.inspectorwidget.mode_setup)
     
     @pyqtSlot()
     def load_lmk_meta(self):
