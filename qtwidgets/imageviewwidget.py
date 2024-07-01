@@ -5,10 +5,13 @@ from PyQt5 import QtGui, QtCore
 from PyQt5.QtGui import QImage
 from PyQt5.QtCore import pyqtSlot, QObject, pyqtSignal, QThread, QMutex
 import sys
+import ict_fact_meta
 import ctypes
 import os.path as osp
 import os 
 import cv2
+from PyQt5.QtCore import Qt
+
 import yaml
 import qtthread
 import metadata 
@@ -16,22 +19,35 @@ import datamanager
 import uuid
 import logger 
 image_logger = logger.root_logger.getChild("image view")
+from enum import Enum
+class ImageEditMode(Enum):
+    SELECT = 1
+    TRANSLATION = 2 
+    ROTATION = 3
+
+
+class SELECT_TYPE(Enum):
+    SELECT_DEFAULT = 1
+    SELECT_MULTIPLE = 2
+    SELECT_CONNECTED = 3
+
+
 
 class ImageViewWidget(QGraphicsView):
     lmk_data_changed_signal = pyqtSignal(int, QGraphicsEllipseItem)
-    def __init__(self, parent, ctx: datamanager.DataManager):
+    def __init__(self, parent, ctx: datamanager.DataManager ):
 
         self._scene = QGraphicsScene()
         super().__init__(self._scene)
 
         self.m_ctx = ctx 
-
+        self.m_mode = ImageEditMode.SELECT
+        self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
         self.test = QtGui.QPixmap()
         # self.test.load("./test.JPG")
         # self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         # self._scene.addPixmap()
         self.img_overlay = self._scene.addPixmap(self.test)
-        
         
         # draw color
         self.pen = QtGui.QPen()
@@ -86,12 +102,22 @@ class ImageViewWidget(QGraphicsView):
         image_logger.debug("action : reload_image ")
         self.reload_lmk_to_view(image_uuid)
     
+    @pyqtSlot()
+    def create_landmark(self):
+        lmk_structure_meta = self.m_ctx.get_landmark_structure_meta()
+        
+
+
     # this method will be called by callback and image load function
     def reload_lmk_to_view(self, image_uuid):
         lmks = self.m_ctx[image_uuid].m_lmk.landmark
         
         if lmks is None :
-            return 
+            self.circle_line_visible(False)
+            return
+        else :
+            self.circle_line_visible(True)
+
 
         for lmk, circle in zip(lmks, self.circle_list):
             x = lmk[0]
@@ -154,7 +180,8 @@ class ImageViewWidget(QGraphicsView):
 
         landmark_structure = self.m_ctx.get_landmark_structure_meta()
         rec_(landmark_structure, landmark_structure.component_name_list())
-  
+    
+        self.circle_line_visible(False)
 
 
     def circle_line_edit(self, changed_pts):
@@ -193,7 +220,7 @@ class ImageViewWidget(QGraphicsView):
                 self.loc = vp
                 self.right_mouse_pressed = True
 
-        super(ImageWidget, self).mousePressEvent(event)
+        super(ImageViewWidget, self).mousePressEvent(event)
         
     def mouseReleaseEvent(self, event) -> None:
         vp = event.pos()
@@ -234,6 +261,44 @@ class ImageViewWidget(QGraphicsView):
         scale +=  self.scale_increase_size * (ratio)
         self.scale(scale, scale)
 
+
+    def keyPressEvent(self, e):
+        key = e.key()
+        template_logging_str = "image viewer action : %s"
+        if key == ord("R"):
+            image_logger.info(template_logging_str,  "rotation mode")
+            self.m_mode = ImageEditMode.ROTATION
+        elif key == ord("G"):
+            image_logger.info (template_logging_str , "translation mode")
+            self.m_mode = ImageEditMode.TRANSLATION
+        elif key == ord("S") : 
+            image_logger.info(template_logging_str, "select mode")
+            self.m_mode = ImageEditMode.SELECT
+        
+        if self.m_mode == ImageEditMode.SELECT:
+            modifiers = e.modifiers()
+
+            if modifiers == QtCore.Qt.ShiftModifier:
+            
+                self.m_select_mode = SELECT_TYPE.SELECT_MULTIPLE
+                image_logger.info(template_logging_str, "multiple pts select mode")
+            elif modifiers == QtCore.Qt.AltModifier:
+
+                self.m_select_mode = SELECT_TYPE.SELECT_CONNECTED
+                image_logger.info(template_logging_str, "connected pts select mode")
+            elif modifiers == QtCore.Qt.ControlModifier:
+                pass 
+            elif modifiers == QtCore.Qt.MetaModifier:
+                pass 
+    def keyReleaseEvent(self, e):
+        key = e.key()
+        template_logging_str = "image viewer action : %s"
+        if self.m_mode == ImageEditMode.SELECT:
+            if key == QtCore.Qt.ShiftModifier:
+                self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
+            elif key == QtCore.Qt.AltModifier:
+                self.m_select_mode = SELECT_TYPE.SELECT_DEFAULT
+            image_logger.info(template_logging_str, "reset default select mode")
 if __name__ == "__main__":
 
 

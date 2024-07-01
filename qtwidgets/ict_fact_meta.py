@@ -5,7 +5,7 @@ import yaml
 import typing 
 import enum 
 
-
+import igl
 
 class ComponentEnum(enum.Enum):
     INNER_UPPER=0
@@ -104,7 +104,7 @@ class BaseFaceMeta:
         self.m_meta_path = ""
         self.m_file_name = BaseFaceMeta.DEFAULT_META_NAME
 
-
+        self.m_template_mesh = None  # (v,f) tuple
     @property
     def file_path(self):
         return osp.join(self.m_meta_path, self.m_file_name)
@@ -124,7 +124,8 @@ class BaseFaceMeta:
         with open(meta_path, 'r') as fp:
             self.m_raw_data = yaml.load(fp, yaml.FullLoader)
     
-
+    def __len__(self):
+        return NotImplemented
     # key sep is .
     def __getitem__(self, key):
         return NotImplemented
@@ -136,17 +137,9 @@ class BaseFaceMeta:
         return NotImplemented
     
 
-    def inner_component_callback(self, callback):
-        pass
+    def get_template_mesh(self):
+        return self.m_template_mesh[0]
 
-    def outer_component_callback(self, callback):
-        pass 
-
-    def upper_component_callback(self, callback):
-        pass 
-
-    def lower_component_callback(self, callback):
-        pass 
 
 
 class IctFaceMeta(BaseFaceMeta):
@@ -167,11 +160,19 @@ class IctFaceMeta(BaseFaceMeta):
             item = BaseFaceMeta.ComponentMetaItem()
             item.deserialize(key, meta[key])
             self.m_components_hierachy[key] = item
+
+        self.m_landmark_vertex_index = self.m_raw_data['meta']['ict_landmark_vertex_indice']
+        generic_mesh_file = os.path.join(self.m_meta_path, self.m_raw_data['meta']['ict_generic_face_file'])
+        v, f = igl.read_triangle_mesh(generic_mesh_file)
+        v = v[self.m_landmark_vertex_index, :]
+        self.m_template_mesh = (v,f)
+        
     
     def get_full_index(self):
         return self.m_full_index
 
-
+    def __len__(self):
+        return len(self.m_landmark_vertex_index)
 
     def __getitem__(self, key):
         return self.m_components_hierachy[key]

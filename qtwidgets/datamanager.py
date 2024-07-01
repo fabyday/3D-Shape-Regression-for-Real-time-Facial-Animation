@@ -15,6 +15,7 @@ from typing import Union
 import signals
 import ict_fact_meta
 import logger
+import math 
 
 
 data_logger =logger.root_logger.getChild("datamanager")
@@ -23,8 +24,9 @@ data_logger =logger.root_logger.getChild("datamanager")
 def save_landmark(lmk, path):
     root_path = osp.dirname(path)
     # print("root", root_path)
-    data_logger = ("save landmark.")
-    data_logger = ("location %s", root_path)
+    data_logger.debug("save landmark.")
+    data_logger.debug("location %s", root_path)
+    data_logger.debug("file name %s", osp.basename(path))
     if not osp.exists(root_path):
         os.makedirs(root_path)
     with open(path, 'w') as fp:
@@ -225,15 +227,22 @@ class DataIOFactory():
         path = meta_info.file_location
         if osp.isfile(meta_info.file_location):
             path = osp.dirname(path)
-        
+        def save_wrapper(data, landmark_pth):
+            def wrapper():
+                save_landmark(data, landmark_pth)
+            return wrapper
         for info in meta_info.get_item_iterator() : 
             lmk_name =  info.name
             try : 
                 uuid = info.unique_id
-                f = lambda : save_landmark(collection[uuid].m_lmk.landmark, osp.join(path, info.landmark))
+                data_logger.debug(uuid)
+                data_logger.debug(collection[uuid].m_lmk.landmark is None)
+                # save_landmark(collection[uuid].m_lmk.landmark, osp.join(path, info.landmark))
+                f = save_wrapper(collection[uuid].m_lmk.landmark, osp.join(path, info.landmark))
                 jobs.add(qtthread.Job(f))
             except:
                 pass 
+        data_logger.info("reserver jobs :" )
         return jobs
             
 
@@ -278,12 +287,54 @@ class Detector():
             # self.m_is_loaded = False
         
 
-    def detect(self, data_object: DataCollection.Data):
+    def detect(self, data_object: DataCollection.Data, landmark_meta_info : ict_fact_meta.BaseFaceMeta):
         
-        lmk_size = 68
+        lmk_size = len(landmark_meta_info)
         h,w = data_object.m_image.shape
         img, ratio = data_object.m_image.resize()
         rects = self.m_detector(img, 1)
+        if len(rects) == 0 :
+            w,h = data_object.m_image.shape
+            v = landmark_meta_info.get_template_mesh()
+            mean_v = np.mean(v, axis=0)
+            centered_v =  v  - mean_v 
+            max_y = np.max(np.abs(centered_v[:, 0]).reshape(-1))
+            max_x = np.max(np.abs(centered_v[:, 1].reshape(-1)))
+            max_z = np.max(centered_v[:, -1].reshape(-1))
+
+            max_length = max(max_y, max_x)
+            max_length += 0.1
+            near = 1.0
+            far = 1000
+            aspect_ratio = w/h
+            
+
+
+            #normal coord porj
+            proj = np.array([[near/max_length, 0,  0, 0 ],
+                               [0, -near/max_length, 0, 0 ],
+                                [0, 0, -(far+near)/(far-near), -2*(far*near)/(far-near) ],
+                                [0,0,-1,0]])            #image coord proj
+            
+            aspect_applied_w = w
+            img_proj = np.array([[aspect_applied_w, 0,  aspect_applied_w/2 ],
+                                [0, h, h/2 ],
+                                [0, 0, 1]])
+            cam_trans = max_z
+            centered_v[:, -1] -= (cam_trans + 10.0)
+            centered_v_h = np.concatenate([centered_v, np.ones((len(centered_v), 1), dtype=np.float32) ], axis=-1)
+            proj_2d = (proj @centered_v_h.T).T
+            proj_2d[:, :-1] /= proj_2d[:, -1].reshape(-1,1)
+            proj_2d = proj_2d[:, :-1]
+            proj_2d[:, -1] = 1.0
+            proj_img_h = (img_proj@proj_2d.T).T
+            proj_img = proj_img_h[:, :-1]
+
+            data_object.m_lmk.landmark = proj_img
+
+            return 
+
+
         for i, rect in enumerate(rects):
             l = rect.left()
             t = rect.top()
@@ -298,13 +349,15 @@ class Detector():
     
 
 class LandmarkDetectJob(qtthread.Runnable):
-    def __init__(self, data_object : DataCollection.Data, detector : Detector):
+    def __init__(self, data_object : DataCollection.Data, detector : Detector, landmark_meta_info : ict_fact_meta.BaseFaceMeta):
         super().__init__()
         self.data_object = data_object
         self.detector = detector
+        
+        self.landmark_meta_info = landmark_meta_info
 
     def run(self):
-        self.detector.detect(self.data_object)
+        self.detector.detect(self.data_object, self.landmark_meta_info)
 
 
 class LoadDetectJob(qtthread.Runnable):
@@ -421,7 +474,8 @@ class DataManager:
             raise Exception("Detector Not Loaded")
 
         for data in self.m_data_collection:
-            jobs.add(LandmarkDetectJob(data, self.m_detector))
+            # LandmarkDetectJob(data, self.m_detector, self.get_landmark_structure_meta())._run()
+            jobs.add(LandmarkDetectJob(data, self.m_detector,self.get_landmark_structure_meta()))
         self.m_worker.reserve_job(jobs, job_finish_event_type=signals.Event(signals.EventType.ALL_LANDMARK_DETECTED))
 
     def detect_landmark(self, index_o_uuid_key):

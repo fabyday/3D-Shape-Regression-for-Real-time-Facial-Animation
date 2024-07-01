@@ -83,6 +83,7 @@ class MyApp(QMainWindow):
         self.statusbar.addWidget(self.status_label)
         self.statusbar.addPermanentWidget(self.progress_bar)
         self.m_timer = QTimer()
+        self.timeout_connection = None 
         self.connect_GUI_to_thread()
         self._init_data_control_singal()
 
@@ -129,8 +130,9 @@ class MyApp(QMainWindow):
         
     @pyqtSlot(int, int)#init value, length
     def make_status_progress(self, start, length):
-        if self.timer.isActive():
+        if self.timeout_connection is not None :
             self.timer.disconnect(self.timeout_connection)
+            self.timeout_connection = None 
         self.progress_bar.setRange(start, length)
         self.progress_bar.setValue(start)
         self.progress_bar.setVisible(True)

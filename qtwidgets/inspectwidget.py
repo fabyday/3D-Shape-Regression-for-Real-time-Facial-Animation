@@ -249,6 +249,8 @@ class InspectorWidget(QWidget):
 
     def open_root_dir_and_load(self, pth_name):
         try : 
+            if pth_name is None:
+                return 
             self.root_dir_widget = pth_name
             self.m_ctx.load_data_from_meta(pth_name)
         except  FileNotFoundError:
