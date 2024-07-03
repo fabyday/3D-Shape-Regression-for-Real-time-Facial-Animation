@@ -294,7 +294,7 @@ class BaseMeta:
     def reset(self, filename :Optional[str] = None ):
         self.m_meta_file_name = BaseMeta.Default_File_Name if filename is None else filename
         self.m_raw_data = None 
-        self.m_location = None 
+        self.m_location = "" 
         self.m_raw_data_loaded = False
         self.m_category_collection = CategoryCollection(self.m_cls_type)
 
@@ -360,7 +360,7 @@ class BaseMeta:
         dict_items = self.m_category_collection.serialize()
         self.raw_data['meta']["images_name"] = dict_items
         with open(save_path, "w") as fp: 
-            yaml.dump(self.m_raw_data, fp)
+            yaml.dump(self.m_raw_data, fp, sort_keys=False)
         return True 
     
 
@@ -445,7 +445,7 @@ class LandmarkMeta(BaseMeta):
     
     def create(self):
         super().create()
-        self.m_raw_data['meta']['images_name'] = dict()
+        # self.m_raw_data['meta']['images_name'] = dict()
 
     def open_meta(self, path):
         super().open_meta(path)
@@ -537,7 +537,7 @@ class ImageMeta(BaseMeta):
     def create(self):
         super().create()
         self.m_raw_data['meta']['file_ext'] = ""
-        self.m_raw_data['meta']['images_name'] = dict()
+        # self.m_raw_data['meta']['images_name'] = dict()
         
 
     def open_meta(self, path):

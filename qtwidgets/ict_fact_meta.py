@@ -35,21 +35,21 @@ class BaseFaceMeta:
             return self.m_name
 
         def get_type(self):
-            if self.m_name.find("inner_upper"):
+            if self.m_name.find("inner_upper") >= 0:
                 return ComponentEnum["INNER_UPPER"]
-            elif self.m_name.find("inner_lower"):
+            elif self.m_name.find("inner_lower") >= 0:
                 return ComponentEnum["INNER_LOWER"]
-            elif self.m_name.find("outer_upper"):
+            elif self.m_name.find("outer_upper") >= 0:
                 return ComponentEnum["OUTER_UPPER"]
-            elif self.m_name.find("outer_lower"):
+            elif self.m_name.find("outer_lower") >= 0:
                 return ComponentEnum["LOWER"]
-            elif self.m_name.find("lower"):
+            elif self.m_name.find("lower") >= 0:
                 return ComponentEnum["LOWER"]
-            elif self.m_name.find("upper"):
-                return ComponentEnum["LOWER"]
-            elif self.m_name.find("vertical"):
+            elif self.m_name.find("upper") >= 0:
+                return ComponentEnum["UPPER"]
+            elif self.m_name.find("vertical") >= 0:
                 return ComponentEnum["VERTICAL"]
-            elif self.m_name.find("horizontal"):
+            elif self.m_name.find("horizontal") >= 0:
                 return ComponentEnum["HORIZONTAL"]
             else : 
                 if self.is_end_component():

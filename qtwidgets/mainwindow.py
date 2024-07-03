@@ -154,7 +154,7 @@ class MyApp(QMainWindow):
             self.progress_bar.setVisible(False)
 
         self.timeout_connection = self.timer.timeout.connect(reset)
-
+        
 
 
     

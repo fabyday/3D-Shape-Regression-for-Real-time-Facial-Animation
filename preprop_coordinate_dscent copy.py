@@ -217,7 +217,7 @@ class PreProp:
             return lmk
 
         self.img_meta.keys()
-
+        root_meta_path = osp.dirname(self.meta_location)
 
         self.img_and_info = dict()
         self.img_list = []
@@ -234,7 +234,7 @@ class PreProp:
             for meta_data in meta_item:
                 meta_data['landmark']
                 name = meta_data['name']
-                lmk_data = read_lmk_meta(meta_data['landmark'])
+                lmk_data = read_lmk_meta(osp.join(root_meta_path, meta_data['landmark']))
                 img_data = cv2.imread(osp.join(self.img_root, name+self.img_file_ext))
                 img_data = {'category_index' : category_idx, 'category_name' : key, 'index' : len(self.img_list), "name" : name, "lmk_data" : lmk_data, "img_data": img_data, "predef_weight" : category_predef_weight}
                 if key == "neutral_face":
@@ -1264,7 +1264,8 @@ class PreProp:
         # 
         
         if not force_recalcutaion:
-            if osp.exists("./cd_test/identity_weight.txt.npy"):
+            # if osp.exists("./cd_test/identity_weight.txt.npy"):
+            if osp.exists(osp.join(self.save_root_dir, "identity_weight.txt.npy")):
                 return 
 
         
@@ -1284,7 +1285,7 @@ class PreProp:
 
         expr_meshes = np.array(expr_meshes)
         expr = expr_meshes - np.expand_dims(neutral, axis=0)
-        expr_num, _,_ = expr.shape
+        expr_num, _, _ = expr.shape
 
 
         inner_full_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
@@ -1331,9 +1332,34 @@ class PreProp:
             # Q, _ = self.find_camera_matrix(x_3d=camera_instrinsic_data_pts[0],x_2d=np.array(camera_instrinsic_data_lmk)[0])
             Q_list[ci], Rt_list[ci]= self.find_camera_matrix(camera_instrinsic_data_pts[ci][inner_face_lmk_idx, :], np.array(camera_instrinsic_data_lmk[ci])[inner_face_lmk_idx, :])
         
+
+
+        ###################
+        # gopro setup
         test_Q = np.array([[2.29360512e+03, 0.00000000e+00, 2.61489110e+03],
         [0.00000000e+00, 2.29936264e+03, 1.94713585e+03],
         [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]], dtype=np.float32)
+        ##############
+
+
+        #########################
+        # KINECT v2 setup
+        sensor_size = 3.1 * 0.001 # um
+        fov_h = np.deg2rad(70/2.0)
+        fov_v = np.deg2rad(60/2.0)
+        
+        # mm
+        focal_length_x = 3.2813/sensor_size
+        focal_length_y = 3.5157/sensor_size
+        #pixel
+        principal_x = 965.112
+        principal_y = 583.267
+        width_ratio = 640/1920
+
+        kinect_Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
+        test_Q = kinect_Q
+        ##############################
+
         for iii in range(len(Q_list)):
             Q_list[iii] = test_Q
         
@@ -1428,7 +1454,8 @@ class PreProp:
 
                 
 
-                path_name = osp.join("cd_test", str(key_id))
+                path_name = osp.join(self.save_root_dir, str(key_id))
+                # path_name = osp.join("cd_test", str(key_id))
                 if not os.path.exists(path_name):
                     os.makedirs(path_name)
                 
@@ -1530,14 +1557,18 @@ class PreProp:
 
             for Q_id,(Q, Rt) in enumerate(zip(Q_list, Rt_list)):
                 name = self.img_list[Q_id]['name']
-                np.savetxt("cd_test/Q_iter_{}_{}".format(iter_i,name), Q)
-                np.savetxt("cd_test/Rt_iter_{}_{}".format(iter_i,name), Rt)
+                np.savetxt(osp.join(self.save_root_dir, "Q_iter_{}_{}".format(iter_i,name)), Q)
+                np.savetxt(osp.join(self.save_root_dir, "Rt_iter_{}_{}".format(iter_i,name)), Rt)
+                # np.savetxt("cd_test/Q_iter_{}_{}".format(iter_i,name), Q)
+                # np.savetxt("cd_test/Rt_iter_{}_{}".format(iter_i,name), Rt)
             
 
         gen_expression = np.zeros_like(expr_weights[0])
         user_identity_v = self.get_combine_model(neutral, ids, expr, id_weight, gen_expression)
         import igl
-        igl.write_triangle_mesh("cd_test/gen_identity.obj", user_identity_v, self.neutral_mesh_f)
+        
+        # igl.write_triangle_mesh("cd_test/gen_identity.obj", user_identity_v, self.neutral_mesh_f)
+        igl.write_triangle_mesh(osp.join(self.save_root_dir, "gen_identity.obj"), user_identity_v, self.neutral_mesh_f)
         
 
         self.identity_v = user_identity_v
@@ -1547,12 +1578,14 @@ class PreProp:
             gen_expression[i, 0 ] = 1.0
             user_epxr_v = self.get_combine_model(neutral, ids, expr,id_weight, gen_expression)
             self.expressions_v[i, ...] = user_epxr_v
-            igl.write_triangle_mesh("cd_test/gen_expression_{}.obj".format(str(i)), user_epxr_v, self.neutral_mesh_f)
+            # igl.write_triangle_mesh("cd_test/gen_expression_{}.obj".format(str(i)), user_epxr_v, self.neutral_mesh_f)
+            igl.write_triangle_mesh(osp.join(self.save_root_dir, "gen_expression_{}.obj".format(str(i)) ) , user_epxr_v, self.neutral_mesh_f)
             gen_expression[i, 0 ] = 0.0
 
 
         self.id_weight = id_weight
-        np.save("./cd_test/identity_weight.txt", self.id_weight)
+        # np.save("./cd_test/identity_weight.txt", self.id_weight)
+        np.save(osp.join(self.save_root_dir, "identity_weight.txt") , self.id_weight)
 
 
     def extract_train_set_blendshapes(self, visualsize = False):
@@ -1566,7 +1599,7 @@ class PreProp:
         """
 
         if not hasattr(self, "id_weight"):
-            self.id_weight = np.load("./cd_test/identity_weight.txt.npy")
+            self.id_weight = np.load(osp.join(self.save_root_dir, "identity_weight.txt.npy"))
             self.unconcern_mesh_idx = np.load("./unconcerned_pts.npy")
             self.contour_pts_idx = np.load("./contour_pts.npy")
 
@@ -2131,10 +2164,12 @@ if __name__ == "__main__":
     # parser.add_argument( '--predefined_data', type=str, default="./cd_test" )s
 
     args    = parser.parse_args()
-    p = PreProp("landmark/meta.yaml", "prep_data")
+    # p = PreProp("landmark/meta.yaml", "prep_data")
+    p = PreProp("landmark/KINENCT_DARK/meta.yaml", "prep_data")
     p.build()
     print(len(lmk_idx))
-    p.set_save_root_directory("./cd_test")
+    # p.set_save_root_directory("./cd_test") # for gopro
+    p.set_save_root_directory("./kinect_dataset")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
     p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
     p.extract_train_set_blendshapes()

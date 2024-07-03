@@ -29,7 +29,7 @@ def save_landmark(lmk, path):
     data_logger.debug("file name %s", osp.basename(path))
     if not osp.exists(root_path):
         os.makedirs(root_path)
-    with open(path, 'w') as fp:
+    with open(path, 'w', encoding="utf-8") as fp:
         lmk_len = len(lmk)
         for i, coord in enumerate(lmk):
             fp.write(str(coord[0])+" "+str(coord[1]))
@@ -40,10 +40,10 @@ def load_landmark(path):
     if not osp.exists(path):
         raise FileNotFoundError("File not found. : " + path)
     else : 
-        with open(path, 'r') as fp :
+        with open(path, 'r', encoding="utf-8") as fp :
             res = []
             while True:
-                l = fp.read()
+                l = fp.readline()
                 if len(l) == 0 :
                     break 
                 x, y = map(float, l.split(" "))
@@ -149,6 +149,10 @@ class DataCollection:
         
         ext  = meta.extension
         image_location = meta.image_location
+        file_root = meta.file_location
+        if osp.isfile(file_root):
+            file_root = osp.dirname(file_root)
+        
         data.m_image = image.Image(location = image_location, extension=ext, lazy_load=False)
         
         data.m_image.name = item_meta.name
@@ -156,8 +160,13 @@ class DataCollection:
         data.m_image.load()
         data.m_lmk = flandmark.Landmark()
         try :
-            data.m_lmk.landmark = load_landmark(item_meta.landmark)
-        except : 
+            data.m_lmk.landmark = load_landmark(osp.join(file_root, item_meta.landmark))
+        except FileNotFoundError as e: 
+            data_logger.debug("lmk load failed from %s ", osp.join(file_root, item_meta.landmark))
+            data_logger.debug("lmk load failed from %s ", e.strerror)
+        except Exception as e:
+            data_logger.debug("lmk load failed from %s ", osp.join(file_root, item_meta.landmark))
+            data_logger.debug("lmk load failed from %s ", e.args)
             pass 
 
         self.m_data_item[item_meta.unique_id ] = data
@@ -229,7 +238,10 @@ class DataIOFactory():
             path = osp.dirname(path)
         def save_wrapper(data, landmark_pth):
             def wrapper():
-                save_landmark(data, landmark_pth)
+                try :
+                    save_landmark(data, landmark_pth)
+                except : 
+                    data_logger.info("save data might be None type.")
             return wrapper
         for info in meta_info.get_item_iterator() : 
             lmk_name =  info.name
