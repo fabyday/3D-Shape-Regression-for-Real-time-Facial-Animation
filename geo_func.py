@@ -133,3 +133,24 @@ def similarity_transform2(A, B):
     R = (A.At) = B @ A.T @ inv(A, At)
     """
     return B.T @ A @ np.linalg.inv(A.T@A)
+
+
+
+
+
+
+def convert_to_cv_image_coord(pts_2d, image_height_size):
+    """
+        pts_2d : [N, 2] shape, data sequence is  [x, y]
+        image_height_size : add image height size.(not zero based size like "h - 1" )
+    """
+    copied_pts_2d = np.copy(pts_2d)
+    copied_pts_2d[ :, -1 ] = image_height_size - copied_pts_2d[:, -1] - 1
+    return copied_pts_2d
+
+
+
+def convert_to_camera_uv_coord(pts_2d, image_height_size):
+    copied_pts_2d = np.copy(pts_2d)
+    copied_pts_2d[ :, -1 ] = image_height_size - copied_pts_2d[:, -1] - 1
+    return copied_pts_2d

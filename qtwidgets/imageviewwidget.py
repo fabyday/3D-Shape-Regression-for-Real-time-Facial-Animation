@@ -293,6 +293,7 @@ class ImageViewWidget(QGraphicsView):
                 pass
             elif self.m_mode == ImageEditMode.TRANSLATION:
                 self.m_mode = ImageEditMode.SELECT 
+
                 self.edit_mode_and_selected_type_changed_signal.emit(self.m_mode, self.m_select_mode)
             elif self.m_mode == ImageEditMode.SCALE:
                 self.m_mode = ImageEditMode.SELECT 
@@ -417,6 +418,7 @@ class ImageViewWidget(QGraphicsView):
                     # lp = self.img_overlay.mapFromScene(sp).toPoint()
                     # sel_pts.setPos(lp.x(), lp.y())
                     sel_pts.setPos(sel_pts.pos().x()+delta.x(), sel_pts.pos().y()+delta.y())
+                    image_logger.info("[moved %s %s]", sel_pts.pos().x(), sel_pts.pos().y())
                 
                 for sel_pts in self.selected_pts:
                     self.circle_line_edit(sel_pts)

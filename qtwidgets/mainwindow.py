@@ -154,7 +154,7 @@ class MyApp(QMainWindow):
             self.progress_bar.setVisible(False)
 
         self.timeout_connection = self.timer.timeout.connect(reset)
-        
+
 
 
     
@@ -169,8 +169,12 @@ class MyApp(QMainWindow):
         super(QMainWindow, self).closeEvent(event)
 
 
-if __name__ == '__main__':
+def run():
    app = QApplication(sys.argv)
    ex = MyApp()
    ex.show()
    sys.exit(app.exec_())
+if __name__ == '__main__':
+   run()
+
+

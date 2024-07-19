@@ -20,6 +20,7 @@ import scipy
 from itertools import repeat
 import scipy.optimize as opt
 import re 
+import geo_func as geo 
 
 # np.random.seed(8888)
 
@@ -335,7 +336,20 @@ class FirstLevelFern:
         pts_2d[pts_2d[:, 0] >= w, 0 ] = w -1 
         pts_2d[pts_2d[:, 1] < 0, 1] = 0
         pts_2d[pts_2d[:, 1] >= h, 1] = h -1 
+
         loc = pts_2d.astype(np.uint)
+
+
+        # TODO this is experiments.
+        # convert opencv coordinate system 
+        # ======> +X Axis
+        # ||
+        # ||
+        # || 
+        # V
+        # +Y axis
+        # y axis convert to open cv axis
+        loc = geo.convert_to_cv_image_coord(loc, h)
 
         intensity_vectors = img_intensity.T[loc[:, 0].ravel(), loc[:, 1].ravel()] # N x 1
         intensity_vectors = intensity_vectors.reshape(-1,1)
@@ -591,15 +605,23 @@ class FirstLevelFern:
         pbar = tqdm.tqdm(self.ferns, desc="train fern(err : inf)", leave=False)
         vis.set_delay(1)
         im0_o = cv2.cvtColor(np.copy(image_list[0]), cv2.COLOR_GRAY2RGB) 
-
-        im0 = vis.draw_circle( proj(Q, M_list[0], Gt[0]), im0_o, (255,0,0), radius=2 )
-        im0 = vis.draw_circle( proj(Q, M_list[0], current_shapes[0]), im0, (0,0,255), radius=1 )
+        pp = proj(Q, M_list[0], Gt[0])
+        ppp = proj(Q, M_list[0], current_shapes[0])
+        pp = geo.convert_to_cv_image_coord(pp, img_h)
+        ppp = geo.convert_to_cv_image_coord(ppp, img_h)
+        
+        im0 = vis.draw_circle( pp, im0_o, (255,0,0), radius=2 )
+        im0 = vis.draw_circle( ppp, im0, (0,0,255), radius=1 )
         im0 = vis.resize_img( im0, 600 )
         vis.put_text(im0, "origin 0", color=(0,0,255))
         im1_o = cv2.cvtColor(np.copy(image_list[-1]), cv2.COLOR_GRAY2RGB) 
-
-        im1 = vis.draw_circle( proj(Q, M_list[-1], Gt[-1]), im1_o, (255,0,0), radius=2 )
-        im1 = vis.draw_circle( proj(Q, M_list[-1], current_shapes[-1]), im1, (0,0,255), radius=1 )
+        
+        pp = proj(Q, M_list[-1], Gt[-1])
+        ppp= proj(Q, M_list[-1], current_shapes[-1])
+        pp = geo.convert_to_cv_image_coord(pp, img_h)
+        ppp = geo.convert_to_cv_image_coord(ppp, img_h)
+        im1 = vis.draw_circle( pp, im1_o, (255,0,0), radius=2 )
+        im1 = vis.draw_circle( ppp , im1, (0,0,255), radius=1 )
         im1 = vis.resize_img( im1, 600 )
         vis.put_text(im1, "origin -1", color=(0,0,255))
         ii = 0 
@@ -612,13 +634,20 @@ class FirstLevelFern:
             pred[...] = 0
 
             pp = proj(Q, M_list[0], current_shapes[0] +  prediction[0])
-            im2 = vis.draw_circle( proj(Q, M_list[0], Gt[0]), im0_o, (255,0,0) , radius=2)
+            pp = geo.convert_to_cv_image_coord(pp, img_h)
+
+            ppp = proj(Q, M_list[0], Gt[0])
+            ppp = geo.convert_to_cv_image_coord(ppp, img_h)
+            im2 = vis.draw_circle( ppp, im0_o, (255,0,0) , radius=2)
             im2 = vis.draw_circle( pp, im2, (0,0,255) , radius=1)
             im2 = vis.resize_img( im2, 600 )
             vis.put_text(im2, "pred 0", color=(0,0,255))
 
             pp = proj(Q, M_list[-1], current_shapes[-1] + prediction[-1])
-            im3 = vis.draw_circle(  proj(Q, M_list[-1], Gt[-1]), im1_o, (255,0,0) ,radius=2)
+            pp = geo.convert_to_cv_image_coord(pp, img_h)
+            ppp = proj(Q, M_list[-1], Gt[-1])
+            ppp = geo.convert_to_cv_image_coord(ppp, img_h)
+            im3 = vis.draw_circle( ppp , im1_o, (255,0,0) ,radius=2)
             im3 = vis.draw_circle( pp, im3, (0,0,255) ,radius=1)
             im3 = vis.resize_img( im3, 600 )
             vis.put_text(im3, "pred -1 : {}".format(ii), color=(0,0,255))
@@ -1397,6 +1426,7 @@ class TwoLevelBoostRegressor:
             blended_pose = get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
             
             gen = add_Rt_to_pts(Q, Rt, blended_pose)
+            gen = geo.convert_to_cv_image_coord(gen)
             z = gen - y
             new_z = z.reshape(-1, 1)
             new_z = new_z.T @ new_z 
@@ -1492,11 +1522,8 @@ class TwoLevelBoostRegressor:
         
         cam_weight = res[-6:, :]
         new_Rt = get_Rt(*cam_weight.ravel())
-        # res = get_combine_bar_model(self.neutral_bar, None, self.exprs_bar, None ,expr_weight)
         res = get_combine_bar_model(output_neutral_, None, output_expr_, None ,expr_weight)
-        # B_bar = self.exprs_bar.reshape(-1, v_size*dim).T @ expr_weight
-        # B_bar = B_bar.reshape(v_size, dim)
-        # res = (new_Rt@ np.concatenate([(self.neutral_bar + B_bar), np.ones((v_size, 1), dtype=np.float32)], axis=-1).T).T
+
         return res, new_Rt
 
 
@@ -1652,9 +1679,16 @@ class TwoLevelBoostRegressor:
         #mean_shape vis
         mea_v1 = proj(Q, np.eye(3,4), self.mean_shape1)
         mea_v2 = proj(Q, np.eye(3,4), self.mean_shape)
+        
+        #TODO for coord test.
+        mea_v1 = geo.convert_to_cv_image_coord(mea_v1, h)
+        mea_v2 = geo.convert_to_cv_image_coord(mea_v2, h)
+
         iia1 = vis.draw_circle(mea_v1, image, colors=(0,0,1), radius=1)
         iia2 = vis.draw_circle(mea_v2, image, colors=(1,0,0), radius=1)
+        
         iia = vis.concatenate_img(1,2,iia1,iia2)
+        
         vis.set_delay(100)
         vis.show("test", iia)
 
@@ -1700,8 +1734,8 @@ class TwoLevelBoostRegressor:
             #                             Ss[self.S_index_list[i]], current_shapes[i]
             #     regression_targets[i, ...] =  (S - cur_shape)
             #     GT_S_List[i,...] = S
-
             regression_targets[ shape_indices , ... ] = Ss[self.S_index_list] - current_shapes
+
             GT_S_List[shape_indices, ...] = Ss[self.S_index_list]
             
             # pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List)
@@ -1853,7 +1887,9 @@ class TwoLevelBoostRegressor:
         self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
         # self.mean_shape = np.mean(centered_shape, axis=0)
         # self.mean_shape = self.nuetral_v
-
+        def get_image_shape( img):
+            (h, w, *_) = img.shape
+            return h, w
         # def split_data(train_data_collection):
         # def _wrapper(i):
         #     image = train_data_collection[i]['img']
@@ -1874,22 +1910,25 @@ class TwoLevelBoostRegressor:
         #####
         result = np.zeros((self.lmk_size, 3), dtype=np.float32)
         prev_ind = -1
+        h, _ = get_image_shape(img)
         if prev_frame_S is None : 
-            prev_frame_S2d = self.detect_by_dlib(img)
+            
 
+            prev_frame_S2d = self.detect_by_dlib(img)
             if clmk_idx is None :
                 clmk_idx = lmk_idx
             im = vis.draw_circle(prev_frame_S2d, img, colors=(0,0,255))
             im = vis.resize_img(im, 1000)
             vis.show(title="test",img=im)
-            # prev_frame_S, new_Rt = self.refine_3d_lmk(prev_frame_S2d, img=img, lmk_idx=lmk_idx)
-            # prev_frame_S2d = prev_frame_S2d[lmk_without_contour_idx, :]
+
+
+            prev_frame_S2d = geo.convert_to_camera_uv_coord(prev_frame_S2d,h)
+
             prev_frame_S, new_Rt = self.refine_3d_lmk(prev_frame_S2d, img=img, shape_lmk_idx=clmk_idx)
             prev_frame_S = (new_Rt @ np.concatenate([prev_frame_S, np.ones((len(prev_frame_S),1),dtype=np.float32)], axis=-1).T).T
-            # prev_ind = np.random.randint(0, len(self.S_list))
-            # prev_frame_S = self.S_list[np.random.randint(0, len(self.S_list))]
+
+        # find most nearest shape to prev_frame_S in original shape space 
         loss = np.inf 
-        # for i, S in enumerate(self.Ss):
         for i, S in enumerate(self.S_original):
             s_loss = (np.sum((((S - np.mean(S, axis=0)) - (prev_frame_S - np.mean(prev_frame_S, axis=0)))**2)))
             # s_loss = np.sum(((S - prev_frame_S)**2))
@@ -1901,8 +1940,10 @@ class TwoLevelBoostRegressor:
         
         
         S_Rp = proj(self.Q,  np.eye(3,4), S_r)
+        S_Rp = geo.convert_to_cv_image_coord(S_Rp, h)
         im = vis.draw_circle(S_Rp, img, colors=(0,0,255), radius=2)
         res = proj(self.Q,  np.eye(3,4), prev_frame_S)
+        res = geo.convert_to_cv_image_coord(res, h)
         im = vis.draw_circle(res, im, colors=(0,255,0), radius=2)
         im = vis.resize_img(im, 1000)
         vis.show(title="tes2t",img=im)
@@ -1985,9 +2026,11 @@ class TwoLevelBoostRegressor:
         result = result / init_num
 
         testing = proj(self.Q, InvRt, result)
-        im = vis.draw_circle(proj(self.Q, InvRt, result), img, (255,255,0), radius=1)
+        pp = proj(self.Q, InvRt, result)
+        pp = geo.convert_to_cv_image_coord(pp, h)
+        im = vis.draw_circle(pp, img, (255,255,0), radius=1)
         # im = vis.draw_circle(proj(self.Q, np.eye(3,4), result), im, (0,255,255), radius=1)
-        vis.show("fukcyou", vis.resize_img(im,1000))
+        vis.show("result", vis.resize_img(im,1000))
 
         # return result, scaled_combined_Rt[:3, :]
         return result, inv_RR[:3,:]
@@ -2044,7 +2087,9 @@ if __name__ == "__main__":
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", start=0, end=5, desired_img_width=800, lmk_indices=lmk_without_contour_idx)
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=800, lmk_indices=lmk_without_contour_idx)
     # new_indices = list(range(lmk_without_contour_idx[0], len(regression_inner_contour_indices)+len(lmk_idx)))
-    Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=640)
+    # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=640)
+    # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./kinect_dataset/")
+    Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./kinect_test_dataset/")
     # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./cd_test/")
     # Q, data, Ss, Rt_invs = load_data_train("./cd_test/", start=-4, end=-1)
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", lmk_indices=lmk_without_contour_idx)
@@ -2054,6 +2099,23 @@ if __name__ == "__main__":
         [0.00000000e+00, 2.29936264e+03, 1.94713585e+03],
         [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]], dtype=np.float32)
     Q[:-1, :] *= resize_ratio
+
+    sensor_size = 3.1 * 0.001 # um
+    fov_h = np.deg2rad(70/2.0)
+    fov_v = np.deg2rad(60/2.0)
+    
+    # mm
+    focal_length_x = 3.2813/sensor_size
+    focal_length_y = 3.5157/sensor_size
+    #pixel
+    principal_x = 965.112
+    principal_y = 583.267
+    width_ratio = 640/1920
+
+    #this is kinect Q
+    Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
+    # kinect_Q[:-1, :] *=width_ratio
+
     # Q[-1, -1] /= resize_ratio
 
     # for i in range(len(data)):
@@ -2091,18 +2153,31 @@ if __name__ == "__main__":
     # neutral_v = neutral_v[lmk_idx, :]
     neutral_v = neutral_v[lmk_new_idx, :]
     # reg = TwoLevelBoostRegressor(Q = Q,Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
-    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=200)
+    # reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
+    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
     # reg = TwoLevelBoostRegressor(Q = Q,T=10, K=10,beta=1000, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     reg.set_save_path("./fern_pretrained_data")
-    # reg.train(data, neutral_v, Ss, Rt_invs)
+    reg.train(data, neutral_v, Ss, Rt_invs)
     reg.load_model("./fern_pretrained_data")
     prev_data = None 
-    while True:
-        prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
-        ida= np.eye(3,4)
+    prev_data = add_to_pts( Rt_invs[data[0]['Rt_inv_index']], Ss[data[0]['S_index']])
+    ida= np.eye(3,4)
+    dt = proj(Q, ida, prev_data)
+    h, w , _ = data[0]['color_img'].shape
+    dt = geo.convert_to_cv_image_coord(dt, h)
 
+    frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
+
+    vis.show("default", frame)
+    prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+    while True:
+        
+        prev_data2  = reg.predict(data[-1]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+        prev_data = prev_data2
         dt = proj(Q, ida, prev_data)
-        frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
+        dt = geo.convert_to_cv_image_coord(dt, h)
+        
+        frame = vis.draw_circle(dt, data[-1]['color_img'], colors=(0,0,255), radius=1, thickness=3)
         vis.show("VideoFrame", frame)
 
     capture = cv2.VideoCapture(0)
@@ -2111,25 +2186,14 @@ if __name__ == "__main__":
     prev_data = None 
     ida= np.eye(3,4)
     #https://www.researchgate.net/figure/Kinect-camera-intrinsic-parameters-the-resolution-and-sensor-size-information-from-36_tbl1_321354490
-    sensor_size = 3.1 * 0.001 # um
-    fov_h = np.deg2rad(70/2.0)
-    fov_v = np.deg2rad(60/2.0)
     
-    # mm
-    focal_length_x = 3.2813/sensor_size
-    focal_length_y = 3.5157/sensor_size
-    #pixel
-    principal_x = 965.112
-    principal_y = 583.267
-    width_ratio = 640/1920
-
-    kinect_Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
-    kinect_Q[:-1, :] *=width_ratio
     while cv2.waitKey(33) < 0:
         ret, frame = capture.read()
-        frame = vis.resize_img(frame, 640)
+        # frame = vis.resize_img(frame, 640)
         prev_data = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q)
         dt = proj(Q, ida, prev_data)
+        h, w, _ = frame.shape
+        geo.convert_to_cv_image_coord(dt, h)
         frame = vis.draw_circle(dt, frame, colors=(0,0,255), radius=1, thickness=3)
         cv2.imshow("VideoFrame", frame)
 

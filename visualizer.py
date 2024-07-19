@@ -648,8 +648,8 @@ class MeshWriter:
 
             ndc[0,0] = 2.0/(right - left) ; ndc[0,2] = -(right + left)/(right-left)
             ndc[1,1] = 2.0/(top - bottom) ; ndc[1,2] = -(top + bottom)/(top - bottom)
-            # ndc[2,2] = -(far+near)/(far - near) ; ndc[2,2] = -(far * near)/(far - near)
-            ndc[2,2] = (far+near)/(far - near) ; ndc[2,2] = (far * near)/(far - near)
+            ndc[2,2] = -(far+near)/(far - near) ; ndc[2,2] = -(far * near)/(far - near)
+            # ndc[2,2] = (far+near)/(far - near) ; ndc[2,2] = (far * near)/(far - near)
             ndc[3,2] = 1.0
 
             proj[0,0] = alpha; proj[0,1] = skew ; proj[0,2] = u0 

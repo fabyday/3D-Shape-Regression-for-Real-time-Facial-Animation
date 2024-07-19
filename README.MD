@@ -60,3 +60,29 @@ mouth stretch
 
 # predeifned_weight 
 [basis_w, expr_1_w expr_2_w .... expr_n_w ]
+
+
+
+
+
+
+# 2d coordinates system
+
+all 2d landmark coordinates is followed opencv coordinates.
+
+```
+    # IMAGE
+     ______________________________________________
+    |  ===========================> +X Axis         |
+    | |                                             |
+    | |                                             |
+    | |                                             |
+    | |                                             |
+    | |                                             |  
+    | |                                             |  
+    | |                                             |  
+    | |                                             |  
+    | V +Y Axis                                     |
+    |                                               |
+    |_______________________________________________|
+```

@@ -321,6 +321,7 @@ class PreProp:
         blended_pose = self.get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, expr_weight)
         
         gen = self.add_Rt_to_pts(Q, Rt, blended_pose)
+
         z = gen - y
         new_z = z.reshape(-1, 1)
         new_z = new_z.T @ new_z
@@ -482,9 +483,10 @@ class PreProp:
     def save_png(self, root_path, file_name, neutral, id, expr, id_weight, expr_weight, Q, Rt, img, lmk2d, iteration, **kwargs):
         if not osp.exists(root_path):
             os.makedirs(root_path)
-
+        h, w, _ = img.shape
         vv = self.get_combine_model(neutral, id, expr, id_weight, expr_weight)
         pts2d = self.add_Rt_to_pts(Q, Rt, vv)
+        pts2d = geo.convert_to_cv_image_coord(pts2d, h)
         # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
         contour = self.contour['full_index']
 
@@ -539,9 +541,11 @@ class PreProp:
 
         for index in index_list:
             img = img_list[index]['img_data']
+            image_h,w, _ = img.shape
             name = img_list[index]['name']
             vv = self.get_combine_model(neutral, identity_m, expr_m, id_weight, expr_weights[index])
             pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+            pts2d = geo.convert_to_cv_image_coord(pts2d, image_h)
             # time_t = draw_cv(index, time_t, id_weight, expr_weights, cam_scales, cam_rots, cam_tvecs)
             contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
             new_contour =  pts2d[contour]
@@ -940,6 +944,7 @@ class PreProp:
 
         """
         
+
         if init_Rt is not None : 
             rvec = np.array(self.decompose_Rt(init_Rt))
             tvec = init_Rt[:, -1, np.newaxis]
@@ -1288,6 +1293,9 @@ class PreProp:
         expr_num, _, _ = expr.shape
 
 
+        (h, w, _) = self.img_list[0]['img_data'].shape
+
+
         inner_full_face_lmk_idx = self.mouse['full_index'] + self.eyebrow['left_eyebrow']['full_index'] + \
             self.eyebrow['right_eyebrow']['full_index'] + self.nose['vertical'] + self.nose['horizontal']+\
             self.eye['left_eye']['full_index'] + self.eye['right_eye']['full_index']
@@ -1297,10 +1305,15 @@ class PreProp:
 
         def default_cost_function(Q, Rt, neutral_bar, ids_bar, exprs_bar, id_weight, expr_weight, y):
             # x := Q + Rt + expr weight
-
+            image_h = h
             blended_pose = self.get_combine_bar_model(neutral_bar , ids_bar, exprs_bar, id_weight, expr_weight)
             
             gen = self.add_Rt_to_pts(Q, Rt, blended_pose)
+            
+            
+            # TODO convert image coordinates 
+            gen = geo.convert_to_cv_image_coord(gen, image_h)
+
             z = gen - y
             new_z = z.reshape(-1, 1)
             new_z = new_z.T @ new_z
@@ -1319,7 +1332,6 @@ class PreProp:
         camera_instrinsic_data_lmk=[]
         camera_instrinsic_data_pts=[]
         lmk_idx = lmk_idx_list[0]
-        (h, w, _) = self.img_list[0]['img_data'].shape
         b_neutral,_,_ = self.get_bars(neutral, ids, expr, lmk_idx)
         for item in self.neutral_list:
             camera_instrinsic_data_lmk.append(item['lmk_data'])
@@ -1395,6 +1407,7 @@ class PreProp:
                         img = sel_imgs[idxx]
                         vv = self.get_combine_model(neutral, ids, expr, id_weight, expr_weights[index])
                         pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+                        pts2d = geo.convert_to_cv_image_coord(pts2d, h)
                         contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
 
                         for con_i, idx in enumerate(self.contour['full_index']):
@@ -1403,6 +1416,11 @@ class PreProp:
                         idx_list = sel_lmk_idx_list[idxx]
                         face = sel_full_faces[idxx]
                         lmk_2d = lmk_2ds[idxx]
+                        
+                        #TODO this is test coord changing                         
+                        lmk_2d = np.copy(lmk_2d)
+                        lmk_2d = geo.convert_to_camera_uv_coord(lmk_2d, h)
+
                         if camera_find_iter == camera_find_inter_start and iter_i == 0:
                             # raw_Rt_list = self.find_camera_matrix( 
                                                         # self.get_combine_bar_model(face[0], face[1], face[2], id_weight, expr_weights[index])[inner_face_lmk_idx],
@@ -1422,6 +1440,7 @@ class PreProp:
                         sel_lmk_idx = lmk_idx_list[index]
                         vv = self.get_combine_model(neutral, ids, expr, id_weight, expr_weights[index])
                         pts2d = self.add_Rt_to_pts(Q_list[index], Rt_list[index], vv)
+                        pts2d = geo.convert_to_cv_image_coord(pts2d, h)
                         contour = self.find_contour(np.array(lmk_2d_list[index])[self.contour['full_index']], pts2d)
 
                         for con_i, idx in enumerate(self.contour['full_index']):
@@ -1630,7 +1649,7 @@ class PreProp:
         ids = ids_meshes - np.expand_dims(neutral, axis=0)
         id_num,_,_ = ids.shape
 
-
+        image_h, w, _ = self.img_list[0]['img_data'].shape
         expr_meshes = np.array(self.expr_meshes)
         expr = expr_meshes - np.expand_dims(neutral, axis=0)
         # expr_bar = expr[..., lmk_idx, :]
@@ -1653,10 +1672,11 @@ class PreProp:
         def expression_cost_funcion(Q, Rt, neutral_bar, exprs_bar, expr_weight, y, alpha_star):
             #alpha star is predefined face_mesh.
             # x := Q + Rt + expr weight
-
+            nonlocal image_h
             blended_pose = self.get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
             
             gen = self.add_Rt_to_pts(Q, Rt, blended_pose)
+            gen = geo.convert_to_cv_image_coord(gen, image_h)
             z = gen - y
             new_z = z.reshape(-1, 1)
             w_reg = 10
@@ -1670,6 +1690,7 @@ class PreProp:
         def camera_posit_func_builder(Q, neutral_bar ,exprs_bar):
             def camera_posit_func(expr_weight, pts2d, is_First  = False, initial_Rt = None):
                 nonlocal neutral_bar, exprs_bar, inner_face_lmk_idx
+                nonlocal image_h
                 if is_First :
                     ind = inner_face_lmk_idx
                 # ind = [ii for ii in range(len(neutral_bar)) if ii in self.contour['full_index']]
@@ -1678,9 +1699,12 @@ class PreProp:
                     pts2d = pts2d[ind, :]
 
                 pts3d = self.get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
-
                 # new_Q, Rt = self.find_camera_matrix(pts3d, pts2d)
-                Rt = self.find_camera_parameter_by_cv2(pts3d, pts2d, guessed_Q= Q)
+
+                #pts2d is opencv coordinate, convert to uv coordinates.
+                uv_converted_pts2d = geo.convert_to_camera_uv_coord(pts2d, image_h)
+                Rt = self.find_camera_parameter_by_cv2(pts3d, uv_converted_pts2d, guessed_Q= Q)
+                # Rt = self.find_camera_parameter_by_cv2(pts3d, pts2d, guessed_Q= Q)
                 rx, ry, rz = self.decompose_Rt(Rt)
                 tvec = Rt[:, -1].reshape(-1,1)
                 # succ, rvec, tvec = cv2.solvePnP(pts3d, pts2d, cameraMatrix=Q, distCoeffs=np.zeros((4,1)))
@@ -1766,12 +1790,13 @@ class PreProp:
                 camera_func, reset_cam_param_f = camera_posit_func_builder(Q, user_specific_neutral_bar, user_specific_expr_bar)
                 
                 def contour_remap(w):
-                    nonlocal reset_param_f, reset_cam_param_f, lmk2d, Q, sel_pts3d_idx
+                    nonlocal reset_param_f, reset_cam_param_f, lmk2d, Q, sel_pts3d_idx, image_h
                     expr_weight = w[:-6, :]
                     Rt = self.get_Rt(*w[-6:, :].ravel())
 
                     pose3d = self.get_combine_model(user_specific_neutral, None, user_specific_expr, None, expr_weight)
                     pose2d = self.add_Rt_to_pts(Q, Rt,  pose3d)
+                    pose2d = geo.convert_to_cv_image_coord(pose2d, image_h)
                     contour = self.find_contour(lmk2d[self.contour['full_index']], pose2d)
 
 
@@ -1859,6 +1884,7 @@ class PreProp:
                 Rt[0, -1] = scaled_x
                 Rt[1, -1] = scaled_y
                 res = self.add_Rt_to_pts(Q, Rt, v)
+                res = geo.convert_to_cv_image_coord(res, height)
                 if  ((np.any(res[:, 0] < 0) or np.any(res[:, 0] > width)) and (np.any(res[:, 1] < 0) or np.any(res[:, 1] > height))):
                     factor_x, factor_y = np.random.uniform(0.1, 1, 2)
                     scaled_x = x*factor_x 
@@ -1964,6 +1990,7 @@ class PreProp:
                     Rt[1, -1] = scaled_y
                     Rt[2, -1] = scaled_z
                     res = self.add_Rt_to_pts(Q, Rt, new_pose)
+                    res = geo.convert_to_cv_image_coord(res, h)
                     
                     # yououo = vis.draw_circle(res, img, (0,0,255), radius=10, thickness=2)
                     # yououo = vis.resize_img(yououo, 800)
@@ -2088,11 +2115,20 @@ class PreProp:
                     init_pose_list.append(i*sizet + j)
 
                     # for debugging purpose
-                    imim = vis.draw_circle( self.add_Rt_to_pts(Q, np.eye(3,4), data['S']), data['image'], (0,0,255), radius=2, thickness=10)
-                    imim = vis.draw_circle(self.add_Rt_to_pts(Q,np.eye(3,4), result_data[i][j]['S']), imim, (255,0,0), radius=2, thickness=10)
+                    im_p1 = self.add_Rt_to_pts(Q, np.eye(3,4), data['S'])
+                    im_p2 = self.add_Rt_to_pts(Q,np.eye(3,4), result_data[i][j]['S'])
+                    im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
+                    im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
+                    imim = vis.draw_circle(im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
+                    imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
                     imim1 = vis.resize_img(imim, 800)
-                    imim = vis.draw_circle( self.add_Rt_to_pts(Q, data['Rt_inv'], data['S']), data['image'], (0,0,255), radius=2, thickness=10)
-                    imim = vis.draw_circle(self.add_Rt_to_pts(Q, data['Rt_inv'], result_data[i][j]['S']), imim, (255,0,0), radius=2, thickness=10)
+
+                    im_p1 = self.add_Rt_to_pts(Q, data['Rt_inv'], data['S'])
+                    im_p2 = self.add_Rt_to_pts(Q, data['Rt_inv'], result_data[i][j]['S'])
+                    im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
+                    im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
+                    imim = vis.draw_circle( im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
+                    imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
                     imim2 = vis.resize_img(imim, 800)
                     imim = vis.concatenate_img(1,2, imim1, imim2)
                     i = 0
@@ -2169,7 +2205,8 @@ if __name__ == "__main__":
     p.build()
     print(len(lmk_idx))
     # p.set_save_root_directory("./cd_test") # for gopro
-    p.set_save_root_directory("./kinect_dataset")
+    # p.set_save_root_directory("./kinect_dataset")
+    p.set_save_root_directory("./kinect_test_dataset")
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
     p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
     p.extract_train_set_blendshapes()
