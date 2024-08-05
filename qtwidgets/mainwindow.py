@@ -18,7 +18,7 @@ import uuid
 import imageviewwidget
 import inspectwidget
 import signals
-import logger 
+import logger
 
 
 tlogger = logger.thread_logger
@@ -170,6 +170,7 @@ class MyApp(QMainWindow):
 
 
 def run():
+
    app = QApplication(sys.argv)
    ex = MyApp()
    ex.show()

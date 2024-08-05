@@ -2,7 +2,6 @@
 import image as ImageLib
 import numpy as np 
 
-
 class Landmark:
     
 

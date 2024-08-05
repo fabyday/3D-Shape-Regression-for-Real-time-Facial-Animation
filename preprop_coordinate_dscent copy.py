@@ -2115,31 +2115,31 @@ class PreProp:
                     init_pose_list.append(i*sizet + j)
 
                     # for debugging purpose
-                    im_p1 = self.add_Rt_to_pts(Q, np.eye(3,4), data['S'])
-                    im_p2 = self.add_Rt_to_pts(Q,np.eye(3,4), result_data[i][j]['S'])
-                    im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
-                    im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
-                    imim = vis.draw_circle(im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
-                    imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
-                    imim1 = vis.resize_img(imim, 800)
+                    # im_p1 = self.add_Rt_to_pts(Q, np.eye(3,4), data['S'])
+                    # im_p2 = self.add_Rt_to_pts(Q,np.eye(3,4), result_data[i][j]['S'])
+                    # im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
+                    # im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
+                    # imim = vis.draw_circle(im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
+                    # imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
+                    # imim1 = vis.resize_img(imim, 800)
 
-                    im_p1 = self.add_Rt_to_pts(Q, data['Rt_inv'], data['S'])
-                    im_p2 = self.add_Rt_to_pts(Q, data['Rt_inv'], result_data[i][j]['S'])
-                    im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
-                    im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
-                    imim = vis.draw_circle( im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
-                    imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
-                    imim2 = vis.resize_img(imim, 800)
-                    imim = vis.concatenate_img(1,2, imim1, imim2)
-                    i = 0
-                    while True:
-                        name_path = osp.join(debugging_image_root_path, data['name']+("_0" if i == 0 else "_"+str(i))+".jpg")
-                        if osp.exists(name_path):
-                            i += 1
-                            continue
-                        else:
-                            vis.save(name_path, imim)
-                            break
+                    # im_p1 = self.add_Rt_to_pts(Q, data['Rt_inv'], data['S'])
+                    # im_p2 = self.add_Rt_to_pts(Q, data['Rt_inv'], result_data[i][j]['S'])
+                    # im_p1 = geo.convert_to_cv_image_coord(im_p1, h)
+                    # im_p2 = geo.convert_to_cv_image_coord(im_p2, h)
+                    # imim = vis.draw_circle( im_p1 , data['image'], (0,0,255), radius=2, thickness=10)
+                    # imim = vis.draw_circle(im_p2, imim, (255,0,0), radius=2, thickness=10)
+                    # imim2 = vis.resize_img(imim, 800)
+                    # imim = vis.concatenate_img(1,2, imim1, imim2)
+                    # i = 0
+                    # while True:
+                    #     name_path = osp.join(debugging_image_root_path, data['name']+("_0" if i == 0 else "_"+str(i))+".jpg")
+                    #     if osp.exists(name_path):
+                    #         i += 1
+                    #         continue
+                    #     else:
+                    #         vis.save(name_path, imim)
+                    #         break
 
                         
                     

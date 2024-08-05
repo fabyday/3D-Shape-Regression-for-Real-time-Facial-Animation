@@ -28,6 +28,8 @@ def similarity_transform2(src, dest):
     """
         only rot and scale
         src to dest scale and rotation
+        # scale, R, trans, Scale*R Trans, Rt, Inverse
+
     """
 
 
@@ -67,7 +69,7 @@ def similarity_transform2(src, dest):
     vv3[:-1, -1] = dest_mean
 
     vv4[:3, :3] = R
-    
+    # scale, R, trans, Scale*R Trans, Rt, Inverse
     return scale, R, trans_vec, vv3@vv2@vv, vv3@vv4@vv, (-vv)@vv4.T@(-vv3)
 
 import data_loader as dl
@@ -208,7 +210,7 @@ class FirstLevelFern:
         
     @staticmethod
     # def calc_offset_d(Q, Ms, samples, max_width, max_height, P):
-    def calc_offset_d(self, Q, samples, P, w, h):
+    def calc_offset_d(self, Q, samples, P, w, h, kappa = 1.0):
         """
             pts : N x K
             samples : Vx3
@@ -225,7 +227,10 @@ class FirstLevelFern:
         # left_pupil = np.mean(samples[eye['left_eye']['full_index'], :]  , axis=0)
         # right_pupil = np.mean(samples[eye['right_eye']['full_index'], :], axis=0)
         # kappa = np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3  # 
-        kappa = 0.05 # For testing
+        # kappa = 0.05 # For testing
+        # kappa = 0.01 * kappa
+        kappa = np.sqrt(np.sum((samples[0] - samples[1])**2))*0.3 * kappa  # 
+        print(kappa)
         
         
         # samples2d = (Q@(R@samples.T+t)).T
@@ -367,11 +372,13 @@ class FirstLevelFern:
 
         # im = np.copy(Image)
         # im = cv2.cvtColor(im, cv2.COLOR_GRAY2RGB)
-
-        # im3 = vis.draw_circle(proj(Q, M, S_init_pose),im, colors=(0,0,255),radius=1, thickness=2)
-        # im3 = vis.draw_circle(pts_2d ,im, colors=(255,0,0), radius=1)
-        # im3 = vis.draw_pts_mapping(im3, anchor_pts[nearset_index, :], pts_2d, (0,255,255), thickness=1)
-        # im3 = vis.resize_img(im3, 800)
+        # data = geo.convert_to_cv_image_coord(proj(Q, M, S_init_pose),h)
+        # im3 = vis.draw_circle(data, im, colors=(0,0,255),radius=1, thickness=2)
+        
+        # im3 = vis.draw_circle(loc ,im3, colors=(255,0,0), radius=1)
+        # im3 = vis.draw_pts_mapping(im3, data[nearset_index, :] ,loc, (0,255,0))
+        # # im3 = vis.draw_pts_mapping(im3, anchor_pts[nearset_index, :], pts_2d, (0,255,255), thickness=1)
+        # im3 = vis.resize_img(im3, 1000)
         
         # vis.show('calc', im3)
 
@@ -484,7 +491,8 @@ class FirstLevelFern:
             scale, R, trasnlate , scale_Rt, combined_Rt, _ = similarity_transform2(mean_shape, current_shape)
             # combine_Rt = combine_Rt[:3, :]
             # current_shape = add_to_pts(scale*R, current_shape)
-            inverted_disp = add_to_pts(scale*R, disp)
+            # inverted_disp = add_to_pts(scale*R, disp)
+            inverted_disp = add_to_pts(R, disp)
             # inverted_disp = disp # TODO for testing
 
             V_i, _, _, _  = FirstLevelFern.calc_appearance_vector(image, self.Q, M, current_shape, P, inverted_disp, nearest_index)
@@ -504,7 +512,7 @@ class FirstLevelFern:
         self.is_pre_initialized = True
         
 
-    def train(self, regression_targets, image_list, current_shapes, Ss, S_index_list, M_list, mean_shape, Gt):
+    def train(self, regression_targets, image_list, current_shapes, Ss, S_index_list, M_list, mean_shape, Gt, kappa=1.0):
         lmk_size, dim = regression_targets[0].shape
         if len(image_list[0].shape ) == 3 :
             img_h, img_w, _ = image_list[0].shape
@@ -526,7 +534,8 @@ class FirstLevelFern:
         # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self.Q, M, neutral_v, self.P, img_w, img_h)
         # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self.Q, M, S_init_pose, self.P, img_w, img_h)
         # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self, self.Q, mean_shape, self.P, img_w, img_h)
-        self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self, self.Q, mean_shape, self.P, img_w, img_h)
+        print("kapa", kappa)
+        self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self, self.Q, mean_shape, self.P, img_w, img_h, kappa=kappa)
         
         # ig = vis.draw_circle(pixel_loc, image, color=(255,0,0))
         # ig = vis.resize(ig, 1000)
@@ -672,10 +681,11 @@ class FirstLevelFern:
         # Rtinv = TwoLevelBoostRegressor.inverse_Rt(predRt)
         Rtinv = predRt
         # vis.draw_circle(proj(Q, Rtinv, p))
-        inverted_disp = add_to_pts(scale2*R,self.disp)
+        # inverted_disp = add_to_pts(scale2*R,self.disp)
+        inverted_disp = add_to_pts(R,self.disp)
         # meanspace_cur_S = add_to_pts(scale*R, cur_S)
         # inverted_disp = self.disp
-        # i1 = vis.draw_circle(proj(Q, np.eye(3,4), cur_S[self.nearest_index_list, :] + inverted_disp), img, radius=1)
+        i1 = vis.draw_circle(geo.convert_to_cv_image_coord(proj(Q, Rtinv, cur_S[self.nearest_index_list, :] + inverted_disp), 1080), img, radius=1)
         # i2 = vis.draw_circle(proj(Q, combined_Rt, mean_shape), img)
         # vis.show("smalll", vis.resize_img(i1,1000))
         
@@ -1095,7 +1105,7 @@ class TwoLevelBoostRegressor:
     """
 
 
-    def __init__(self, Q = None, nuetral_v = None, Ss=None, S_original = None , T=10, K=300, F=5, beta = 250, P = 400, data=None):
+    def __init__(self, Q = None, neutral_v = None, Ss=None, S_original = None , T=10, K=300, F=5, beta = 250, P = 400, data=None):
     # def __init__(self, Q = None, T=1, K=20, F=1, beta = 250, P = 400):
         """
             T : The number of first level regression
@@ -1426,7 +1436,7 @@ class TwoLevelBoostRegressor:
             blended_pose = get_combine_bar_model( neutral_bar=neutral_bar, ids_bar =  None, expr_bar = exprs_bar, w_i = None, w_e = expr_weight)
             
             gen = add_Rt_to_pts(Q, Rt, blended_pose)
-            gen = geo.convert_to_cv_image_coord(gen)
+            gen = geo.convert_to_cv_image_coord(gen, h)
             z = gen - y
             new_z = z.reshape(-1, 1)
             new_z = new_z.T @ new_z 
@@ -1667,27 +1677,32 @@ class TwoLevelBoostRegressor:
         # K x 3
         # means = np.mean(self.S_list, axis=1, keepdims=True)
         # centered_shape = self.S_list - np.mean(self.S_list, axis=1, keepdims=True)
-        centered_shape = self.S_list 
+        centered_shape = self.S_list
+        # centered_shape = self.S_list 
         scale = np.sqrt(np.mean(np.sum(np.power(centered_shape, 2.0), axis=-1), axis=-1))
 
         # self.mean_shape = np.mean(centered_shape, axis=0)
-        self.mean_shape1 = np.mean(centered_shape, axis=0)
-        self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
+        self.mean_shape = np.mean(centered_shape, axis=0)
+
+
+        # self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
+        # self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
+
         # self.mean_shape = self.nuetral_v
 
 
         #mean_shape vis
-        mea_v1 = proj(Q, np.eye(3,4), self.mean_shape1)
+        # mea_v1 = proj(Q, np.eye(3,4), self.mean_shape1)
         mea_v2 = proj(Q, np.eye(3,4), self.mean_shape)
         
         #TODO for coord test.
-        mea_v1 = geo.convert_to_cv_image_coord(mea_v1, h)
+        # mea_v1 = geo.convert_to_cv_image_coord(mea_v1, h)
         mea_v2 = geo.convert_to_cv_image_coord(mea_v2, h)
 
-        iia1 = vis.draw_circle(mea_v1, image, colors=(0,0,1), radius=1)
+        # iia1 = vis.draw_circle(mea_v1, image, colors=(0,0,1), radius=1)
         iia2 = vis.draw_circle(mea_v2, image, colors=(1,0,0), radius=1)
-        
-        iia = vis.concatenate_img(1,2,iia1,iia2)
+        iia = iia2
+        # iia = vis.concatenate_img(1,2,iia1,iia2)
         
         vis.set_delay(100)
         vis.show("test", iia)
@@ -1695,7 +1710,7 @@ class TwoLevelBoostRegressor:
         # np.save(os.path.join(self.save_path, "S"), self.S_list)
         global multithread_flag 
         pre_init_weak_f = functools.partial(FirstLevelFern.pre_initialize, data_size = N, lmk_size = self.lmk_size)
-        precompute_calc_offset_d_f = functools.partial(FirstLevelFern.calc_offset_d, Q=self.Q, samples=self.mean_shape, P=self.P, w =w, h= h )
+        # precompute_calc_offset_d_f = functools.partial(FirstLevelFern.calc_offset_d, Q=self.Q, samples=self.mean_shape, P=self.P, w =w, h= h, kappa=1.0 )
         try : 
 
             multithread_flag_ = multithread_flag
@@ -1709,7 +1724,7 @@ class TwoLevelBoostRegressor:
 
         for weak in self.weak_regressors:
             pre_init_weak_f(weak)
-            precompute_calc_offset_d_f(weak)
+            # precompute_calc_offset_d_f(weak)
             
         # mt_pool.map(pre_init_weak_f, self.weak_regressors)
 
@@ -1728,6 +1743,7 @@ class TwoLevelBoostRegressor:
         shape_indices = list(range(len(current_shapes)))
         regression_targets = np.zeros_like(current_shapes)
         GT_S_List = np.zeros_like(current_shapes)
+        kappa = 1.0
         for weak_regressor in tqdm.tqdm(self.weak_regressors, desc="weak regressor train mode."):
             # for i, shape in enumerate(current_shapes):
             #     image, M, S, cur_shape = image_list[i], M_data[ self.S_index_list[i] ], \
@@ -1739,7 +1755,8 @@ class TwoLevelBoostRegressor:
             GT_S_List[shape_indices, ...] = Ss[self.S_index_list]
             
             # pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List)
-            pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List)
+            pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List, kappa=kappa)
+            kappa -= 0.1
             current_shapes += pred
 
 
@@ -1769,9 +1786,9 @@ class TwoLevelBoostRegressor:
             res = []
             for item in o :
                 res_item = self._predict(item)
-                cv2.imshow("test", res_item)
-                cv2.waitKey(100)
-                res.append(res_item, init_num)
+                # cv2.imshow("test", res_item)
+                # cv2.waitKey(100)
+                # res.append(res_item, init_num)
             return res 
         elif isinstance(o, np.ndarray):
             # while True:
@@ -1794,10 +1811,7 @@ class TwoLevelBoostRegressor:
             # Rtinv = TwoLevelBoostRegressor.inverse_Rt(new_Rt)
             Rtinv = new_Rt
             if render :
-                if len(o.shape) == 3:
-                    h,w,c =(o.shape)
-                else :
-                    h,w = o.shape
+                h,w,*_ =(o.shape)
                 # res = proj(self.Q, Rtinv, data)
 
                 # im = vis.draw_circle(res, o, colors=(0,0,255), radius=1)
@@ -1809,7 +1823,7 @@ class TwoLevelBoostRegressor:
             return prev_data
             
         else : 
-            raise TypeError("it is not list of images or image(ndarray)")
+            raise TypeError(repr(type(o))+"it is not list of images or image(ndarray)")
     
     @staticmethod
     def similarity_transform(src, dest):
@@ -1864,7 +1878,18 @@ class TwoLevelBoostRegressor:
     def find_most_similar_to_target_pose(self, pose_collection, target_pose, candidate_num = 20):
         #https://stackoverflow.com/questions/6422700/how-to-get-indices-of-a-sorted-array-in-python
         # ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : np.mean(np.sum(((S[1] - target_pose)**2), axis=-1)))]
-        sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : (np.sum((( (S[1] - np.mean(S[1], axis=0)) - (target_pose - np.mean(target_pose, axis=0)))**2))))]
+
+        def distance_f1(S1, S2): # cloestst distance with centered mesh 
+            # S, R, SRt, Rt, *_ = similarity_transform2(S1, S2)
+            # res = add_to_pts(SRt, S1)
+            # return np.sum(( S1 - S2 )**2)
+            return np.sum(( (S1 - np.mean(S1, axis=0)) - (S2 - np.mean(S2,axis=0) )**2))
+
+        def distance_f2(S1, S2): #distance between similar shapes.
+            return np.sum((np.mean(S1, axis=0)  - np.mean(S2, axis=0))**2)
+        # sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : (np.sum((( (S[1] - np.mean(S[1], axis=0)) - (target_pose - np.mean(target_pose, axis=0)))**2))))]
+        sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S :  distance_f1(S[1] , target_pose))]
+        # sorted_sps2 = [i for i in sorted(sorted_ss, key = lambda S :  distance_f2(pose_collection[S] , target_pose))]
         # ss_distance = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : (np.sum((( np.mean(S[1], axis=0) - np.mean(target_pose, axis=0) )**2))))]
 
         return sorted_ss[:candidate_num]
@@ -1881,11 +1906,12 @@ class TwoLevelBoostRegressor:
         self.S_list = np.array(self.S_list)
         means = np.mean(self.S_list, axis=1, keepdims=True)
         # centered_shape = self.S_list - np.mean(self.S_list, axis=1, keepdims=True)
-        centered_shape = self.S_list
+        centered_shape = self.S_list 
+        # centered_shape = self.S_list
         scale = np.sqrt(np.mean(np.sum(np.power(centered_shape, 2.0), axis=-1), axis=-1))
 
-        self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
-        # self.mean_shape = np.mean(centered_shape, axis=0)
+        # self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
+        self.mean_shape = np.mean(centered_shape, axis=0)
         # self.mean_shape = self.nuetral_v
         def get_image_shape( img):
             (h, w, *_) = img.shape
@@ -2083,6 +2109,25 @@ def load_data_train(path, start = None, end = None, lmk_indices = None, desired_
         res.append({'img' : image_dict[img_name][0], 'color_img' : image_dict[img_name][1], "S_index" : S_Rt_index, "S_init" : s_init, "Rt_inv_index" : S_Rt_index})
     return Q, res[start:end], Ss, S_original, Rt_invs, resize_ratio
     
+
+
+
+def get_kinect_Q():
+    sensor_size = 3.1 * 0.001 # um
+    fov_h = np.deg2rad(70/2.0)
+    fov_v = np.deg2rad(60/2.0)
+    
+    # mm
+    focal_length_x = 3.2813/sensor_size
+    focal_length_y = 3.5157/sensor_size
+    #pixel
+    principal_x = 965.112
+    principal_y = 583.267
+    width_ratio = 640/1920
+
+    #this is kinect Q
+    Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
+    return Q
 if __name__ == "__main__":
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", start=0, end=5, desired_img_width=800, lmk_indices=lmk_without_contour_idx)
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=800, lmk_indices=lmk_without_contour_idx)
@@ -2153,8 +2198,8 @@ if __name__ == "__main__":
     # neutral_v = neutral_v[lmk_idx, :]
     neutral_v = neutral_v[lmk_new_idx, :]
     # reg = TwoLevelBoostRegressor(Q = Q,Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
-    # reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
-    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
+    # reg = TwoLevelBoostRegressor(Q = Q,beta=250,   Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
+    reg = TwoLevelBoostRegressor(Q = Q,beta=0, Ss=Ss, S_original = S_original, neutral_v=neutral_v, data=data,P=100)
     # reg = TwoLevelBoostRegressor(Q = Q,T=10, K=10,beta=1000, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     reg.set_save_path("./fern_pretrained_data")
     reg.train(data, neutral_v, Ss, Rt_invs)
@@ -2168,18 +2213,23 @@ if __name__ == "__main__":
 
     frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
 
-    vis.show("default", frame)
-    prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
-    while True:
+    # vis.show("default", frame)
+
+    result = []
+    prev_data = None
+    # prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+    result.append(prev_data)
+    for i in range(100):
         
-        prev_data2  = reg.predict(data[-1]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+        prev_data2  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+        result.append(prev_data2)
         prev_data = prev_data2
         dt = proj(Q, ida, prev_data)
         dt = geo.convert_to_cv_image_coord(dt, h)
         
-        frame = vis.draw_circle(dt, data[-1]['color_img'], colors=(0,0,255), radius=1, thickness=3)
+        frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
         vis.show("VideoFrame", frame)
-
+    # print(result)
     capture = cv2.VideoCapture(0)
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -2190,10 +2240,12 @@ if __name__ == "__main__":
     while cv2.waitKey(33) < 0:
         ret, frame = capture.read()
         # frame = vis.resize_img(frame, 640)
-        prev_data = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q)
-        dt = proj(Q, ida, prev_data)
+        prev_data2 = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q)
+        
+        prev_data = prev_data2
+        dt = proj(Q, ida, prev_data2)
         h, w, _ = frame.shape
-        geo.convert_to_cv_image_coord(dt, h)
+        dt = geo.convert_to_cv_image_coord(dt, h)
         frame = vis.draw_circle(dt, frame, colors=(0,0,255), radius=1, thickness=3)
         cv2.imshow("VideoFrame", frame)
 
