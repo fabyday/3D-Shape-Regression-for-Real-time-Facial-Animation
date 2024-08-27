@@ -1,28 +1,39 @@
 import numpy as np 
-
-import os
-os.environ['KMP_DUPLICATE_LIB_OK']='True'
-import logging
-logging.basicConfig(filename='reg_regressor_Rt_weak_logger.log',  level=logging.DEBUG)
-
-import yaml 
 import multiprocessing as mt 
-import cv2 
-import functools 
-
-import tqdm
-import time
 import visualizer as vis
 import scipy.spatial as sp 
-import igl
-import copy
-import scipy
 from itertools import repeat
 import scipy.optimize as opt
-import re 
 import geo_func as geo 
+import copy
+import data_loader as dl
 
-# np.random.seed(8888)
+import logging ,tqdm, time, functools, cv2, yaml, os, re, igl, copy, scipy, sys, math
+
+
+
+
+#logging 
+
+root_logger = logging.getLogger()
+root_logger.setLevel(logging.DEBUG)
+file_logger = root_logger.getChild("file_logger")
+stream_logger = root_logger.getChild("stream_logger")
+
+
+stdout_stream_handler = logging.StreamHandler(sys.stdout)
+file_handler = logging.FileHandler("reg_regressor_Rt_weak_logger.log")
+formatter = logging.Formatter('[%(name)s][%(threadName)s][%(levelname)s]: %(message)s')
+
+file_logger.addHandler(file_handler)
+stream_logger.addHandler(stdout_stream_handler)
+
+
+# logging.basicConfig(filename='reg_regressor_Rt_weak_logger.log',  level=logging.DEBUG)
+os.environ['KMP_DUPLICATE_LIB_OK']='True'
+
+
+
 
 def similarity_transform2(src, dest):
     """
@@ -72,7 +83,6 @@ def similarity_transform2(src, dest):
     # scale, R, trans, Scale*R Trans, Rt, Inverse
     return scale, R, trans_vec, vv3@vv2@vv, vv3@vv4@vv, (-vv)@vv4.T@(-vv3)
 
-import data_loader as dl
  
 full_index, eye, contour,mouse, eyebrow, nose  = dl.load_ict_landmark("./ict_lmk_info.yaml")
 lmk_without_contour_idx = list(set(full_index) - set(contour['full_index']))
@@ -190,119 +200,51 @@ class FirstLevelFern:
         self.ferns = [SecondLevelFern(Q, F, beta, P, name = iid) for iid in range(K)]
         self.name = name
 
-    @staticmethod
-    def generate_offset_d(P = 400):
-        #only consider x, y
-        loc = np.zeros((1,3))
-        samples = np.random.uniform(-1, 1, size=(P, 3))
-        samples[: , -1] = 0.0
-        return samples
-
+ 
 
     
     @staticmethod
-    def calc_offset_d2(P):
-        res = np.zeros(shape=(P, 3))
-        res[:, 0] = np.random.uniform(-1*0.9, 1*0.9)
-        res[:, 1] = np.random.uniform(-1*0.9, 1*0.9)
-        res[:, 2] = np.random.uniform(-1*0.9, 1*0.9)
-        return res
-        
-    @staticmethod
-    # def calc_offset_d(Q, Ms, samples, max_width, max_height, P):
+    # def calc_offset_d(self, Q, samples, P, sample_distance_variance):
     def calc_offset_d(self, Q, samples, P, w, h, kappa = 1.0):
         """
             pts : N x K
             samples : Vx3
+
         """
-        # R = Ms[:3,:3]
-        # t = Ms[:, -1, np.newaxis]
         
-        if hasattr(self, "nearest_index") and hasattr(self, "disp"):
+        if hasattr(self, "nearest_index") and hasattr(self, "disp"): # if preinitialized.
             return self.nearest_index, self.disp
 
 
         # see detail : https://www.microsoft.com/en-us/research/wp-content/uploads/2013/01/Face-Alignment-by-Explicit-Shape-Regression.pdf
-        # full_index, eye, contour, mouse, eyebrow, nose  = dl.load_ict_landmark("./ict_lmk_info.yaml")
-        # left_pupil = np.mean(samples[eye['left_eye']['full_index'], :]  , axis=0)
-        # right_pupil = np.mean(samples[eye['right_eye']['full_index'], :], axis=0)
-        # kappa = np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3  # 
+        full_index, eye, contour, mouse, eyebrow, nose  = dl.load_ict_landmark("./ict_lmk_info.yaml")
+        left_pupil = np.mean(samples[eye['left_eye']['full_index'], :]  , axis=0)
+        right_pupil = np.mean(samples[eye['right_eye']['full_index'], :], axis=0)
+        print("size between eyes", np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3) 
+        kappa = np.sqrt(np.sum((right_pupil - left_pupil)**2))*0.3*kappa  # 
+
         # kappa = 0.05 # For testing
         # kappa = 0.01 * kappa
-        kappa = np.sqrt(np.sum((samples[0] - samples[1])**2))*0.3 * kappa  # 
-        print(kappa)
+        # kappa = np.sqrt(np.sum((samples[0] - samples[1])**2))*0.3 # 
+        # kappa = np.sqrt(np.sum((samples[0] - samples[1])**2))*0.3 * kappa  # 
+
         
         
-        # samples2d = (Q@(R@samples.T+t)).T
-        samples2d = (Q@(samples.T)).T
-        samples2d = samples2d[:, :-1] / samples2d[:, -1, np.newaxis]
-        max = np.max(samples, axis=0)
-        min = np.min(samples, axis=0)
-        # kdtree =sp.KDTree(samples - np.mean(samples, axis=0, keepdims=True))
-        # kdtree =sp.KDTree(samples2d)
-        # disp = np.random.uniform(min-1, max+1, (P*2, 3))
+    
 
         disp = np.zeros((P,3), dtype=np.float32)
-        idx_list = list(range(len(disp)))
         num_P = P
-        disp = np.random.normal(0, kappa, size = (num_P, 3))
-        # disp = np.random.uniform(-kappa, kappa, size = (num_P, 3))
-        # while True :
-        #     disp[idx_list, :] = np.random.uniform(-kappa, kappa, size = (num_P, 3))#TODO
-        #     # flag, l = FirstLevelFern.test_outofbound_samples(Q, Ms, disp, w, h)
-        #     flag, l = FirstLevelFern.test_valid_pts(disp)
-        #     if flag: # if good random sample it is .
-        #         break
-        #     else :
-        #         num_P = len(l)
-        #         idx_list = l
-
-
-        # # random select index
-        # nearest_indextmp = list(range(len(samples)))
-        # nearest_index = []
-        # for i in range(P//len(samples)):
-        #     nearest_index += nearest_indextmp
-        # randomly_selected_index = list(np.random.randint(low=0, high=len(samples), size=(P%len(samples))))
-        # nearest_index += randomly_selected_index
-
-
+        disp = np.random.normal(0, kappa, size = (num_P, 3)) # range of [-kappa ~ +kappa]
         nearest_index = np.random.randint(0, len(samples), size=P).tolist()
-
-        # kdtree =sp.KDTree(samples)
-        # disp = np.random.normal(np.mean( samples ,axis=0, keepdims=True), 2,size= (10000, 3))
-        # disp[:, -1] = 1
-        # _, nearest_index = kdtree.query(disp)
-        # disp2d = (Q@(R@disp.T+t)).T
-        # disp2d = (Q@(R@disp.T+t)).T
-        # for i, nearest_idx in enumerate(nearest_index):
-            # disp[i, :] += samples[nearest_idx, :] 
         
-        # disp2d = (Q@(disp.T)).T
-        # disp2d = disp2d[:, :-1] / disp[:, -1, np.newaxis]
-        # _, nearest_index = kdtree.query(disp2d)
-        # print(set(nearest_index))
-        # print(disp2d)
-        # print(samples2d)
-        # import matplotlib.pyplot as plt 
         
-        # plt.scatter(disp2d[:, 0], disp2d[:, 1], color='r')
-        # plt.scatter(samples2d[:, 0], samples2d[:, 1], color='b')
-        # plt.show()
+        # this is test displacement option        
+        global_disp = samples[nearest_index] + disp
+        tree = sp.cKDTree(samples)
+        dist, inds = tree.query(global_disp)
+        nearest_index = np.ravel(inds)
 
-        # fig = plt.figure()
-        # ax = fig.add_subplot(projection='3d')
 
-        # disp_test = np.copy(disp)
-        # for i in range(len(disp_test)):
-            # disp_test += samples[nearest_index[i]]
-        # ax.scatter(disp_test[:, 0], disp_test[:, 1], disp_test[:, 2], marker="x")
-        # ax.scatter(samples[:,0], samples[:,1], samples[:,2], marker="o")
-        # plt.show()
-        # resdisp = np.zeros_like(disp)
-        
-        # for i, nearest_idx in enumerate(nearest_index):
-        #     disp[i, :] -= samples[nearest_idx, :] 
         self.nearest_index, self.disp = nearest_index, disp
         return nearest_index, disp
     
@@ -531,15 +473,29 @@ class FirstLevelFern:
         self.pixel_loc_list = [] # N x P x 2
         self.nearest_index_list = [] # N x P x 1
 
-        # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self.Q, M, neutral_v, self.P, img_w, img_h)
-        # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self.Q, M, S_init_pose, self.P, img_w, img_h)
-        # self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self, self.Q, mean_shape, self.P, img_w, img_h)
-        print("kapa", kappa)
+        logging.info("kappa %f", kappa)
+
         self.nearset_index, self.disp = FirstLevelFern.calc_offset_d(self, self.Q, mean_shape, self.P, img_w, img_h, kappa=kappa)
         
-        # ig = vis.draw_circle(pixel_loc, image, color=(255,0,0))
-        # ig = vis.resize(ig, 1000)
-        # vis.show("test", ig)
+        
+        disp_v = mean_shape[self.nearest_index, :] + self.disp
+        disp_v_2d = proj(self.Q, np.eye(3,4), disp_v).astype(np.int)
+        meaN_shape_2d = proj(self.Q, np.eye(3,4), mean_shape).astype(np.int)
+        disp_v_2d = geo.convert_to_camera_uv_coord(disp_v_2d, img_h)
+        meaN_shape_2d = geo.convert_to_camera_uv_coord(meaN_shape_2d, img_h)
+        test_image = np.zeros((img_h, img_w, 3))
+
+
+        test_image = vis.draw_pts_mapping(test_image, meaN_shape_2d[self.nearset_index, :], disp_v_2d, color=(255,255, 0), thickness=1)
+
+        test_image = vis.draw_circle(disp_v_2d, test_image, colors=(0,255,255), radius=1) # yello  is disp
+        test_image = vis.draw_circle(meaN_shape_2d, test_image, colors=(0,0,255), radius=1)#red is pts
+        ppath = "./disp_checker"
+        if not os.path.exists(ppath):
+            os.makedirs(ppath)
+        vis.save(osp.join(ppath, str(self.name)+".png"), test_image)
+
+
         global mt_pool
 
         mt_f = functools.partial(
@@ -547,41 +503,7 @@ class FirstLevelFern:
             self=self, images=image_list, M_list =M_list, mean_shape = mean_shape, current_shapes = current_shapes, disp = self.disp, nearest_index=self.nearset_index, P = self.P
             )
         self.V_list = mt_pool.map(mt_f, range(N))
-        # for i, (reg, cur) in enumerate(zip(regression_targets, current_shapes)):
-        #     scale, R, trans_vec, scaled_Rt, combined_Rt, _ = similarity_transform2(cur, mean_shape)
-        #     regression_targets[i,...] = add_to_pts(scale*R, reg)
-
-
-        # for i in range(N): # 
-        #     image, M, current_shape = image_list[i], M_list[i],  np.squeeze(current_shapes[i, ...])
-            
-        #     # inverted_disp = (np.linalg.inv(rot_inv_list[i]) @ self.disp.T).T
-        #     scale, R, trasnlate , combine_Rt, _ = similarity_transform2(mean_shape, current_shape)
-        #     combine_Rt = combine_Rt[:3, :]
-        #     # Rt = TwoLevelBoostRegressor.similarity_transform(mean_shape, current_shape)
-        #     # s = vis.draw_circle(proj(Q, np.eye(3,4), current_shape), image)
-        #     # sa = vis.draw_circle(proj(Q, np.eye(3,4), mean_shape), image)
-        #     # a = vis.draw_circle(proj(Q, np.eye(3,4), add_to_pts(combine_Rt, self.disp) ), image)
-        #     # qq = vis.draw_circle(proj(Q, np.eye(3,4), add_to_pts(combine_Rt, mean_shape)), image)
-        #     # s = vis.resize_img(s, 600)
-        #     # sa = vis.resize_img(sa, 600)
-        #     # qq = vis.resize_img(qq, 600)
-        #     # a = vis.resize_img(a, 600)
-        #     # aa = vis.concatenate_img(2, 2, s,a, sa, qq)
-        #     # vis.show("test", aa)
-
-            
-        #     # inverted_disp = add_to_pts(scale*R, self.disp)
-        #     inverted_disp = add_to_pts(R, self.disp)
-        #     # inverted_disp = self.disp
-            
-
-        #     # V_i, pixel_loc, nearest_index, _  = FirstLevelFern.calc_appearance_vector(image,self.Q, M, S_init_pose, self.P, self.disp ,self.nearset_index)
-        #     V_i, pixel_loc, nearest_index, _  = FirstLevelFern.calc_appearance_vector(image,self.Q, M, current_shape, self.P, inverted_disp ,self.nearset_index)
-        #     # V_i, pixel_loc, nearest_index, _  = FirstLevelFern.calc_appearance_vector(image,self.Q, M, Ss[S_index_list[i]], self.P, inverted_disp ,self.nearset_index)
-        #     # self.nearest_index_list.append(nearest_index)
-        #     self.pixel_loc_list.append(pixel_loc)
-        #     self.V_list.append(V_i)
+        
         
 
 
@@ -640,76 +562,22 @@ class FirstLevelFern:
             fern_regressor.train(regression_targets, self.P2, self.V, self.pixel_location, self.nearset_index, pred)
             prediction += pred
             regression_targets -= pred
-            pred[...] = 0
-
-            pp = proj(Q, M_list[0], current_shapes[0] +  prediction[0])
-            pp = geo.convert_to_cv_image_coord(pp, img_h)
-
-            ppp = proj(Q, M_list[0], Gt[0])
-            ppp = geo.convert_to_cv_image_coord(ppp, img_h)
-            im2 = vis.draw_circle( ppp, im0_o, (255,0,0) , radius=2)
-            im2 = vis.draw_circle( pp, im2, (0,0,255) , radius=1)
-            im2 = vis.resize_img( im2, 600 )
-            vis.put_text(im2, "pred 0", color=(0,0,255))
-
-            pp = proj(Q, M_list[-1], current_shapes[-1] + prediction[-1])
-            pp = geo.convert_to_cv_image_coord(pp, img_h)
-            ppp = proj(Q, M_list[-1], Gt[-1])
-            ppp = geo.convert_to_cv_image_coord(ppp, img_h)
-            im3 = vis.draw_circle( ppp , im1_o, (255,0,0) ,radius=2)
-            im3 = vis.draw_circle( pp, im3, (0,0,255) ,radius=1)
-            im3 = vis.resize_img( im3, 600 )
-            vis.put_text(im3, "pred -1 : {}".format(ii), color=(0,0,255))
-            im = vis.concatenate_img(2, 2, im0, im1,im2, im3)
-            vis.show("weak!!", im)
-            ii+=1
-            logging.debug('fern regressor : {} '.format(np.sum(np.sqrt(np.sum(regression_targets**2, -1)))))
             
+            logging.debug('fern regressor : {} '.format(np.sum(np.sqrt(np.sum(regression_targets**2, -1)))))
             pbar.set_description("train fern(err : {})".format(np.sum(np.sqrt(np.sum(regression_targets**2, -1))) ))
-
         return prediction
             
 
-    def predict(self, img, cur_S, S_prime, mean_shape, predRt, Q):
-        res = np.zeros_like(cur_S)
-        # R = predRt[:,:3]
-        # RR = TwoLevelBoostRegressor.normalize_matrix(mean_shape, cur_S)
-
-        # scale, R, trans_vec, combined_Rt, _, _ = similarity_transform2(mean_shape, cur_S)
-        scale2, R, trans_vec, combined_Rt, _, _ = similarity_transform2(mean_shape, cur_S)
-
-        # Rtinv = TwoLevelBoostRegressor.inverse_Rt(predRt)
-        Rtinv = predRt
-        # vis.draw_circle(proj(Q, Rtinv, p))
-        # inverted_disp = add_to_pts(scale2*R,self.disp)
-        inverted_disp = add_to_pts(R,self.disp)
-        # meanspace_cur_S = add_to_pts(scale*R, cur_S)
-        # inverted_disp = self.disp
-        i1 = vis.draw_circle(geo.convert_to_cv_image_coord(proj(Q, Rtinv, cur_S[self.nearest_index_list, :] + inverted_disp), 1080), img, radius=1)
-        # i2 = vis.draw_circle(proj(Q, combined_Rt, mean_shape), img)
-        # vis.show("smalll", vis.resize_img(i1,1000))
+    def predict(self, img, cur_S, S_prime, mean_shape, Rtinv, Q):
         
-        # intensity_vectors, loc, nearset_index, disp  = FirstLevelFern.calc_appearance_vector(img, Q, Rtinv, cur_S, 400, inverted_disp, self.nearest_index_list)
-        # im = vis.draw_circle(proj(Q, np.eye(3,4), cur_S),img, colors=(0,0,255))
-        i = 0 
-        # intensity_vectors, loc, nearset_index, disp  = FirstLevelFern.calc_appearance_vector(img, Q, Rtinv, cur_S, 400, inverted_disp, self.nearest_index_list)
-        intensity_vectors, loc, nearset_index, disp  = FirstLevelFern.calc_appearance_vector(img, Q, Rtinv, cur_S, 400, inverted_disp, self.nearest_index_list)
+        _, R, *_ = similarity_transform2(mean_shape, cur_S)
+        
+        inverted_disp = add_to_pts(R,self.disp)
+        intensity_vectors, *_ = FirstLevelFern.calc_appearance_vector(img, Q, Rtinv, cur_S, 400, inverted_disp, self.nearest_index_list)
+        
         pred = np.zeros_like(cur_S)
         for fern_reg in self.ferns:
-            pred += fern_reg.pred(img, cur_S, Q, predRt, intensity_vectors)
-            # pred = fern_reg.pred(img, cur_S, Q, Rtinv, intensity_vectors, inverted_disp, self.nearest_index_list)
-            # cur_S += pred
-            # res += pred
-            # if i % 100 == 0 :
-            #     im = vis.draw_circle(proj(Q, Rtinv, cur_S),img, colors=(0,0,255), radius=1)
-            #     im = vis.resize_img(im,1000)
-            #     vis.put_text(im, str(i), color=(255,0,0))
-            #     vis.show("small", im)
-            # i+=1
-        # res = add_to_pts(R.T, res)
-        # scale, R, trans_vec, combined_Rt, _, _ = similarity_transform2(mean_shape, cur_S)
-
-        # pred = add_to_pts(scale*R, pred)
+            pred += fern_reg.pred(intensity_vectors)
         return pred
 
     def load(self, root_path):
@@ -746,68 +614,19 @@ class SecondLevelFern:
         self.beta = beta 
         self.name = name
     # def pred(self, img, cur_S, Q,Rt, intensity_vector, disp, nearest_index):
-    def pred(self, img, cur_S, Q,Rt, intensity_vector):
+    def pred(self, intensity_vector):
         index = 0
-        # debug_index = np.zeros(self.F, dtype=np.int32)
         self.selected_nearest_index = self.selected_nearest_index.astype(np.uint)
         for f in ( range( self.F)):
-            nearest_lmk_idx_1 = self.selected_nearest_index[f, 0]
-            nearest_lmk_idx_2 = self.selected_nearest_index[f, 1]
-            # x = self.selected_pixel_location[f, 0]
-            # y = self.selected_pixel_location[f, 1]
-            nearest_lmk_idx_1 = self.selected_pixel_index[f, 0]
-            nearest_lmk_idx_2 = self.selected_pixel_index[f, 1]
+            pixel1_idx = self.selected_pixel_index[f, 0]
+            pixel2_idx = self.selected_pixel_index[f, 1]
+
+            intensity_1 = intensity_vector[pixel1_idx]
+            intensity_2 = intensity_vector[pixel2_idx]
             
-            
-            sps = img.shape
-            if(len(sps) == 3):
-                h, w, _ = img.shape
-            else:
-                h, w = img.shape
-
-
-            # shape1 = cur_S[nearest_lmk_idx_1, None]
-            # proj_xy = proj(Q, Rt, shape1)
-            # proj_xy[proj_xy < 0] = 0
-            # proj_xy[proj_xy[:, 0] >= w, 0] = w-1
-            # proj_xy[proj_xy[:, 1] >= h, 1] = h-1
-            # x,y = proj_xy.astype(np.uint).ravel()
-            # intensity_1 = img[y,x].astype(np.float32)
-            intensity_1 = intensity_vector[nearest_lmk_idx_1]
-            intensity_2 = intensity_vector[nearest_lmk_idx_2]
-            
-            # shape2 = cur_S[nearest_lmk_idx_2, None]
-            # proj_xy = proj(Q, Rt, shape2)
-            # proj_xy[proj_xy < 0] = 0
-            # proj_xy[proj_xy[:, 0] >= w, 0] = w-1
-            # proj_xy[proj_xy[:, 1] >= h, 1] = h-1
-            # x,y = proj_xy.astype(np.uint).ravel()
-            # intensity_2 = img[y,x].astype(np.float32)
-
-            # intensity_1 = intensity_vector[nearest_lmk_idx_1]
-            # intensity_2 = intensity_vector[nearest_lmk_idx_2]
-
-
-            # S_H = (Q @ cur_S.T).T
-            # S = S_H[:, :-1] / S_H[:, -1, None]
-            # project_xy = S + self.selected_pixel_location[f , :2]
-            # project_xy = project_xy[int(nearest_lmk_idx_1), :]
-            # h,w = img.shape
-            # min_pj_xy =  np.minimum(project_xy, np.expand_dims([w - 1,h - 1],0))
-            # xy = np.maximum([[0,0]],min_pj_xy)
-            # xy = xy.astype(np.uint)
-            # intensity_1 = img [xy[:,1].ravel(), xy[:, 0].ravel()]
-
-            # project_xy = S + self.selected_pixel_location[f , 2:]
-            # project_xy = project_xy[int(nearest_lmk_idx_2), :]
-            # xy = np.maximum([[0,0]], np.minimum(project_xy, np.expand_dims([w - 1,h - 1],0)))
-            # xy = xy.astype(np.uint)
-            # intensity_2 = img [xy[:, 1].ravel(), xy[:, 0].ravel()]
             diffs = intensity_1.astype(np.float32) - intensity_2.astype(np.float32)
             if(diffs >= self.Fern_threshold[f]):
                 index = index +int(pow(2, f))
-                # debug_index[f] = 1
-        # print(self.name, " : ", debug_index)
         return self.bin_params[index]
 
 
@@ -875,26 +694,12 @@ class SecondLevelFern:
         
         self.pre_initialize_(N, lmk_size)
         
-        # self.selected_pixel_index = np.zeros((self.F, 2), dtype=np.uint)
-        # self.selected_nearest_index = np.zeros((self.F, 2))
-        # self.selected_pixel_location = np.zeros((self.F, 4), dtype=np.uint)
-        # self.ci_mat = np.zeros((self.F,N), dtype=np.float32)
-        
-        # self.corr_mat = np.zeros((self.F, self.P))
-        # self.corr_mat = np.zeros((self.F, self.P))
-
-        # self.Fern_threshold = np.random.uniform(0, 1, (self.F, 1))
-        
-        # start_time = time.time()
-
-
 
 
 
 
         for fi in range(self.F):
             # direction
-            # Y_fi = np.random.normal(0, 1, size=(lmk_size*dim)) # same as lmk_num, 2
             Y_fi = np.random.normal(0, 1, size=(lmk_size,dim)) # same as lmk_num, 2
             Y_fi_norm = np.linalg.norm(Y_fi, axis=-1)[..., np.newaxis]
             Y_fi /= Y_fi_norm 
@@ -953,49 +758,6 @@ class SecondLevelFern:
             self.selected_nearest_index[mpi, 0] =  nearest_indices[max_pixel_ind[0]]
             self.selected_nearest_index[mpi, 1] =  nearest_indices[max_pixel_ind[1]]
                     
-        # aaaaas=[]
-        # aaa = np.copy(self.selected_pixel_index)
-        # for mpi in range(self.F):
-        #     max_corr =  -1
-        #     max_pixel_ind = (0,0)
-        #     for mpj in range(self.P):
-        #         for mpk in range(self.P):
-        #         # for mpk in range(0, mpj+1):
-                    
-        #             temp = (P2[mpj, mpj] + P2[mpk, mpk] - 2*P2[mpj, mpk])*sample_y_variances[mpi]
-        #             if abs(temp) < 1e-10:
-        #                 continue
-                    
-        #             flag = False
-        #             for pi in range(mpi):
-        #                 if mpj == self.selected_pixel_index[pi, 0] \
-        #                     and mpk == self.selected_pixel_index[pi, 1]:
-                            
-        #                     flag = True
-        #                     break
-        #                 elif mpj == self.selected_pixel_index[pi, 1] \
-        #                     and mpk == self.selected_pixel_index[pi, 0]:
-                            
-        #                     flag = True 
-        #                     break
-                
-        #             if flag:
-        #                 continue
-                    
-        #             corr = (self.corr_mat[mpi, mpj] - self.corr_mat[mpi, mpk]) / np.sqrt(abs(temp))
-        #             if corr > max_corr:
-        #                 max_corr = corr
-        #                 max_pixel_ind = (mpj, mpk)
-            
-        #     aaaaas.append(max_corr)
-        #     # self.selected_pixel_index[mpi, :] = max_pixel_ind
-        #     aaa[mpi, :] = max_pixel_ind
-        #     # self.selected_pixel_location[mpi, :2] = pixel_location[max_pixel_ind[0]]
-        #     # self.selected_pixel_location[mpi, 2:] = pixel_location[max_pixel_ind[1]]
-        #     self.selected_nearest_index[mpi, 0] =  nearest_indices[max_pixel_ind[0]]
-        #     self.selected_nearest_index[mpi, 1] =  nearest_indices[max_pixel_ind[1]]
-        
-        # max_diff = -1 # make threshold
         for ii in range(self.F):
             index_m = self.selected_pixel_index[ii, 0]
             index_n = self.selected_pixel_index[ii, 1]
@@ -1003,48 +765,17 @@ class SecondLevelFern:
             max_diff_idx = np.argmax(pixel_diffs)
             max_diff = pixel_diffs[max_diff_idx]
 
-            # for intensity_j, intensity_k in zip(V[:, index_m], V[:, index_n]) : 
-                # temp = intensity_j - intensity_k
-                # if abs(temp) > max_diff:
-                    # max_diff = abs(temp)
             self.Fern_threshold[ii] = np.random.uniform(-0.2*max_diff, 0.2*max_diff) 
         
-        # end_time = time.time()
-        # print("spent time 1 : %s" %(end_time - start_time))
-        # start_time = end_time 
         
         bin_size = 2**self.F
-        # self.data_in_bins = [[] for i in range(bin_size)]
         classify_wrapper_mt = functools.partial(SecondLevelFern._classify_train_data_mt, self=self, V=V)
         Vi2bin_index_pair_result = mt_pool.map(classify_wrapper_mt, range(N))
         for v_i, bin_index in Vi2bin_index_pair_result:
             self.data_in_bins[bin_index].append(v_i)
-        # for i in range(N):
-        #     index = 0
-        #     for j in range(self.F):
-        #         index_m = self.selected_pixel_index[j, 0]
-        #         index_n = self.selected_pixel_index[j, 1]
-        #         density1 = V[i, index_m]
-        #         density2 = V[i, index_n]
-        #         pixel_diff = density1 - density2 
-        #         if pixel_diff >= self.Fern_threshold[j]:
-        #             index = int(index + pow(2.0,j))
-        #     self.data_in_bins[index].append( i)
-
-        # prediction for training. yeah-ah
-        # end_time = time.time()
-        # print("spent time 3 : %s" %(end_time - start_time))
-        # start_time = end_time 
         
-        # prediction = np.zeros_like(regression_targets_S)
-        # self.bin_params = np.zeros((bin_size, lmk_size, 3), dtype=np.float32)
-        # zero_mat = np.zeros((lmk_size, 3))
         for fi in range(bin_size):
             sel_bin_size = len(self.data_in_bins[fi])
-            # for bi in range(sel_bin_size):
-            #     # Si_list, S_i_init_list = data_in_bins[fi][bi] # N x T x 3, N x T x 3
-            #     index = self.data_in_bins[fi][bi] # N x T x 3, N x T x 3
-            #     temp += regression_targets_S[index]
                 
             if (sel_bin_size == 0 ):
                     self.bin_params[fi] = self.zero_mat
@@ -1073,7 +804,7 @@ class SecondLevelFern:
         directory = "fern_regressor_"+str(self.name)
         save_path = os.path.join(root_path, directory)
         self.bin_params = np.load(os.path.join(save_path, "bin_param.npy") )
-        self.data_in_bins = np.load(os.path.join(save_path, "data_in_bins.npy"), allow_pickle=True )
+        # self.data_in_bins = np.load(os.path.join(save_path, "data_in_bins.npy"), allow_pickle=True )
         self.Fern_threshold = np.load(os.path.join(save_path, "Fern_threshold.npy") )
         self.selected_pixel_index = np.load(os.path.join(save_path, "selected_pixel_index.npy") )
         self.selected_pixel_location = np.load(os.path.join(save_path, "selected_pixel_location.npy") )
@@ -1150,10 +881,11 @@ class TwoLevelBoostRegressor:
         else:
             h,w = img.shape
 
-        predef_width = 640
+        predef_width = 1080
         max_length_ratio = 1.0
         if h > 1000 or w > 1000:
             max_length_ratio = predef_width/w
+        max_length_ratio = 1
         new_img = cv2.resize(img, [int(max_length_ratio*w),int(max_length_ratio*h)])
         img = new_img 
         rects = self.detector(img, 1)
@@ -1246,7 +978,6 @@ class TwoLevelBoostRegressor:
 
                         prev_lmk_idx = options.get("prev_lmk_idx", None )
                         if not (lmk_idx is None or  contour_index is None) :
-                            print(prev_lmk_idx == lmk_idx)
                             if  prev_lmk_idx is not None:
                                 pts_color = x_info.get("pts", (255,0,0))
                                 prev_pts3d = get_combine_bar_model(neutral, None, exprs,None, w )
@@ -1309,7 +1040,6 @@ class TwoLevelBoostRegressor:
 
 
             new_lmk_idx_history = [ ]
-            print(kwargs.keys())
             start_lmk_idx = kwargs.get("lmk_idx", None)
             if  start_lmk_idx is not None:
                 start_lmk_idx = copy.deepcopy( start_lmk_idx)
@@ -1382,17 +1112,16 @@ class TwoLevelBoostRegressor:
 
                 if abs(f_val - prev_f_val) < 10 :
                 # if np.all( np.abs(grad_history[iter_i]) < 10e-7, axis=0):
-                    print("stopped at iteration : ", iter_i, ". all gradient is closed to zero, stop optimizing.")
+                    logging.debug("stopped at iteration : " + str(iter_i)+ ". all gradient is closed to zero, stop optimizing.")
                     break
                 
                 if not (f_val < prev_f_val): 
-                    print("fval is greater than prev_f_val")
+                    logging.debug("fval is greater than prev_f_val")
                     break
 
 
                 prev_f_val = f_val
-                # print("iter : ", iter_i, "cost : ", f_val, "\nx", x.ravel())
-                print("iter : ", iter_i, "cost : ", f_val, "grad mean : ", np.mean(grad_history[iter_i]))
+                logging.debug("iter : " +  str(iter_i) + "cost : " + str(f_val) +  "grad mean : " + str(np.mean(grad_history[iter_i])))
             return x, grad_history, alpah_history
 
 
@@ -1541,7 +1270,7 @@ class TwoLevelBoostRegressor:
     
     
     
-    def load_model(self, path):
+    def load_model(self, path, data):
         def atof(text):
             try:
                 retval = float(text)
@@ -1579,6 +1308,30 @@ class TwoLevelBoostRegressor:
         self.exprs_bar = self.exprs[:,lmk_idx, :]
 
 
+        train_data_collection = data
+        N = len(train_data_collection) # training dataset n*m*G*H = 60*9*5*4 = 10,800
+        split_data = TwoLevelBoostRegressor.split_data(train_data_collection)
+            
+        image, M, S_init_pose, S_index = split_data(0)
+        if len(image.shape) == 2 : 
+            h, w = image.shape
+        else : 
+            h, w , _ = image.shape
+
+        self.lmk_size, dim = Ss[S_index].shape
+        
+        self.lmk_shapes = (self.lmk_size, dim)
+        S_size = Ss[S_index].size
+
+        #preprocessing
+        M_data = np.array(Rt_invs)
+        self.S_list = np.array(Ss)
+        self.S_init_list = []
+        for i in tqdm.trange(N,desc="data split..."):
+            image, M_index, S_init_pose, S_index = split_data(i)
+            self.S_init_list.append(add_to_pts(M_data[M_index], self.S_list[S_init_pose]))
+        
+
         with open(os.path.join(path, "meta.txt"), 'r') as fp :
             meta = yaml.load(fp, yaml.FullLoader)
             self.T = meta['T']
@@ -1591,7 +1344,7 @@ class TwoLevelBoostRegressor:
             self.beta = meta['beta']
             self.lmk_size = meta['lmk_size']
         
-        self.weak_regressors = [FirstLevelFern(self.Q, self.K, self.F, self.beta, self.P) for _ in range(self.T)]
+        self.weak_regressors = [FirstLevelFern(self.Q, self.K, self.F, self.beta, self.P, name=str(i)) for i in range(self.T)]
         for weak in tqdm.tqdm(self.weak_regressors):
             weak.load(path)
         
@@ -1756,7 +1509,7 @@ class TwoLevelBoostRegressor:
             
             # pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List)
             pred = weak_regressor.train(regression_targets, image_list, current_shapes, Ss, self.S_index_list, M_sorted_list, self.mean_shape,Gt=GT_S_List, kappa=kappa)
-            kappa -= 0.1
+            kappa -= 0.05
             current_shapes += pred
 
 
@@ -1776,7 +1529,7 @@ class TwoLevelBoostRegressor:
             vis.save(osp.join(path, str(i)+".png"), im)
 
 
-    def predict(self, o, init_num = 15, prev_data = None, render= False, lmk_idx=None, Q = None ):
+    def predict(self, o, init_num = 15, prev_data = None, render= False, lmk_idx=None, Q = None , debug=True):
         """
          o : list of images or image 
         """
@@ -1786,85 +1539,18 @@ class TwoLevelBoostRegressor:
             res = []
             for item in o :
                 res_item = self._predict(item)
-                # cv2.imshow("test", res_item)
-                # cv2.waitKey(100)
-                # res.append(res_item, init_num)
             return res 
         elif isinstance(o, np.ndarray):
-            # while True:
-            #     data, new_Rt =self._predict(o, init_num, prev_frame_S=prev_data, clmk_idx = lmk_idx)
-            #     # Rtinv = TwoLevelBoostRegressor.inverse_Rt(new_Rt)
-            #     Rtinv = new_Rt
-            #     if render :
-            #         if len(o.shape) == 3:
-            #             h,w,c =(o.shape)
-            #         else :
-            #             h,w = o.shape
-            #         res = proj(self.Q, Rtinv, data)
-
-            #         im = vis.draw_circle(res, o, colors=(0,0,255), radius=1)
-            #         im = vis.resize_img(im, 1000)
-            #         vis.set_delay(10)
-            #         vis.show("result", im)
-            #         prev_data = (Rtinv[:, :3] @data.T + Rtinv[:, -1, None]).T
-            data, new_Rt =self._predict(o, init_num, prev_frame_S=prev_data, clmk_idx = lmk_idx,  Q = Q if Q is not None else None)
+            data = self._predict(o, init_num, prev_frame_S=prev_data, clmk_idx = lmk_idx,  Q = Q if Q is not None else None, debug=debug)
             # Rtinv = TwoLevelBoostRegressor.inverse_Rt(new_Rt)
-            Rtinv = new_Rt
             if render :
                 h,w,*_ =(o.shape)
-                # res = proj(self.Q, Rtinv, data)
-
-                # im = vis.draw_circle(res, o, colors=(0,0,255), radius=1)
-                # im = vis.resize_img(im, 1000)
-                # vis.set_delay(10)
-                # vis.show("result", im)
-            prev_data = add_to_pts(Rtinv, data)
-                # prev_data = (Rtinv[:, :3] @data.T + Rtinv[:, -1, None]).T
+            prev_data = data
             return prev_data
             
         else : 
             raise TypeError(repr(type(o))+"it is not list of images or image(ndarray)")
-    
-    @staticmethod
-    def similarity_transform(src, dest):
-        """
-            Ruturn Rt that src to dest
-        """
-
-
-        src_mean = np.mean(src, axis=0)
-        dest_mean = np.mean(dest, axis=0)
-        centered_src = src - src_mean
-        centered_dest = dest- dest_mean
-        
-        RR, s = scipy.linalg.orthogonal_procrustes(centered_src, centered_dest)
-        trans_center_to_dest = dest_mean
-        Rt = np.eye(4,4, dtype=np.float32)
-        new_Rt = np.zeros((3,4), dtype=np.float32)
-        translate_center = np.eye(4,4, dtype=np.float32)
-        translate_center[-1,-1] = 1
-        translate_center[:-1, -1, None] -= src_mean.reshape(-1, 1)
-        Rt[:3,:3] = RR
-        Rt[:-1, -1, None ] = trans_center_to_dest.reshape(-1,1)
-        tmp = Rt @ translate_center
-        new_Rt[:, :] = tmp[:3, :]
-        # A = np.zeros((3*len(src), 9), dtype=np.float32)
-
-        # for i in range(len(centered_src)):
-        #     A[i*3   , :3]  = centered_src[i]
-        #     A[i*3+1 , 3:6]  = centered_src[i]
-        #     A[i*3+2 , 6:]  = centered_src[i]
-        
-        # flat_S = centered_dest.reshape(-1, 1)
-        
-        # res = np.linalg.lstsq(A, flat_S)
-
-        # R = res[0].reshape(3,3)
-        # t = dest_mean - np.mean((R @ src.T).T, axis=0)
-        # t =t.reshape(-1,1)
-        # Rt= np.concatenate([R,t],axis=-1)
-        return new_Rt
-
+  
     @staticmethod
     def inverse_Rt(Rt):
         RR = Rt[:3,:3]
@@ -1883,69 +1569,36 @@ class TwoLevelBoostRegressor:
             # S, R, SRt, Rt, *_ = similarity_transform2(S1, S2)
             # res = add_to_pts(SRt, S1)
             # return np.sum(( S1 - S2 )**2)
-            return np.sum(( (S1 - np.mean(S1, axis=0)) - (S2 - np.mean(S2,axis=0) )**2))
+            return np.sum(( S1  - S2 )**2)
 
-        def distance_f2(S1, S2): #distance between similar shapes.
-            return np.sum((np.mean(S1, axis=0)  - np.mean(S2, axis=0))**2)
-        # sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : (np.sum((( (S[1] - np.mean(S[1], axis=0)) - (target_pose - np.mean(target_pose, axis=0)))**2))))]
+        def distance_f2(S1, S2):
+            return np.sum((S1 - np.mean(S1, axis=0)) - (S2 - np.mean(S2, axis=0))**2)
+                      
         sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S :  distance_f1(S[1] , target_pose))]
-        # sorted_sps2 = [i for i in sorted(sorted_ss, key = lambda S :  distance_f2(pose_collection[S] , target_pose))]
-        # ss_distance = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S : (np.sum((( np.mean(S[1], axis=0) - np.mean(target_pose, axis=0) )**2))))]
+        # sorted_ss = [i for i, _ in sorted(enumerate(pose_collection), key = lambda S :  distance_f2(S[1] , target_pose))]
 
         return sorted_ss[:candidate_num]
 
-    def _predict(self, img, init_num, prev_frame_S = None, clmk_idx = None, Q = None):
-        vis.set_delay(1000)
+    def _predict(self, img, init_num, prev_frame_S = None, clmk_idx = None, Q = None, debug=True):
         if Q is not None :
             self.Q = Q
-        ####    for testing 
-        self.mean_shape = np.zeros_like(self.S_list[0])
-        # S_list N x K x 3
-        new_Rt = np.eye(3,4)
-        # K x 3
-        self.S_list = np.array(self.S_list)
-        means = np.mean(self.S_list, axis=1, keepdims=True)
-        # centered_shape = self.S_list - np.mean(self.S_list, axis=1, keepdims=True)
-        centered_shape = self.S_list 
-        # centered_shape = self.S_list
-        scale = np.sqrt(np.mean(np.sum(np.power(centered_shape, 2.0), axis=-1), axis=-1))
 
-        # self.mean_shape = np.mean(centered_shape/scale.reshape(-1,1,1), axis=0)
-        self.mean_shape = np.mean(centered_shape, axis=0)
-        # self.mean_shape = self.nuetral_v
-        def get_image_shape( img):
-            (h, w, *_) = img.shape
-            return h, w
-        # def split_data(train_data_collection):
-        # def _wrapper(i):
-        #     image = train_data_collection[i]['img']
-        #     M = train_data_collection[i]['Rt_inv_index']
-        #     S_init_pose = train_data_collection[i]['S_init']
-        #     S = train_data_collection[i]['S_index']
-        #     return image, M, S_init_pose, S
-        # return _wrapper
-        #preprocessing
+        
+        #defulat data infos
+        if not hasattr(self, "mean_shape") : 
+            self.mean_shape = np.mean(self.S_list , axis=0)
+        
+        h, *_ = img.shape
 
-        # split_data = TwoLevelBoostRegressor.split_data(self.test_data) #for testing
 
-        # S_init_list = []
-        # for i in tqdm.trange(len(self.test_data),desc="data split..."):
-        #     _,_, S_init_pose, _ = split_data(i)
-        #     S_init_list.append(S_init_pose)
-        # S_init_list = list(map(lambda idx : self.S_list[idx], S_init_list))
-        #####
-        result = np.zeros((self.lmk_size, 3), dtype=np.float32)
-        prev_ind = -1
-        h, _ = get_image_shape(img)
+
         if prev_frame_S is None : 
             
 
             prev_frame_S2d = self.detect_by_dlib(img)
             if clmk_idx is None :
                 clmk_idx = lmk_idx
-            im = vis.draw_circle(prev_frame_S2d, img, colors=(0,0,255))
-            im = vis.resize_img(im, 1000)
-            vis.show(title="test",img=im)
+         
 
 
             prev_frame_S2d = geo.convert_to_camera_uv_coord(prev_frame_S2d,h)
@@ -1962,18 +1615,8 @@ class TwoLevelBoostRegressor:
                 loss = s_loss
                 ind = i
         # S_r = self.S_list[ind]
-        S_r = self.S_original[ind]
-        
-        
-        S_Rp = proj(self.Q,  np.eye(3,4), S_r)
-        S_Rp = geo.convert_to_cv_image_coord(S_Rp, h)
-        im = vis.draw_circle(S_Rp, img, colors=(0,0,255), radius=2)
-        res = proj(self.Q,  np.eye(3,4), prev_frame_S)
-        res = geo.convert_to_cv_image_coord(res, h)
-        im = vis.draw_circle(res, im, colors=(0,255,0), radius=2)
-        im = vis.resize_img(im, 1000)
-        vis.show(title="tes2t",img=im)
-        trained_img_size = 1000 # for testing
+        # S_r = np.deep(self.S_original[ind])
+        S_r = copy.deepcopy(self.S_original[ind])
         if len(img.shape) == 3 : 
             intensity_img = cv2.cvtColor(img,  cv2.COLOR_BGR2GRAY)
         else:
@@ -1983,84 +1626,153 @@ class TwoLevelBoostRegressor:
         # new_Rt = self.similarity_transform(prev_frame_S, S_r) 
         Scale, R, trans_vec, scaled_combined_Rt,combined_Rt, inv_RR  = similarity_transform2(prev_frame_S, S_r)
         
-        # prev_frame_S = np.concatenate([prev_frame_S, np.ones((len(prev_frame_S), 1))], axis=-1)
-        # prev_frame_S = (new_Rt@prev_frame_S.T).T   
-        prev_frame_S_no_rt = prev_frame_S
-        prev_frame_S = add_to_pts(combined_Rt[:3,:], prev_frame_S)     
-        # prev_frame_S = add_to_pts(Scale*R, prev_frame_S)     
-        # im = vis.draw_circle(res, img, colors=(0,255,0))
-        res = proj(self.Q,  np.eye(3,4), prev_frame_S)
-        S_sim_proj = proj(self.Q,  np.eye(3,4), S_r)
-        # im = vis.draw_circle(res, img, colors=(0,255,0))
-        # im = vis.draw_circle(S_Rp, im, colors=(0,0,255))
-
-        # im = vis.draw_circle(res, img, colors=(255,0,0), radius=2)
-        # im = vis.draw_circle(S_sim_proj, im, colors=(0,0,255), radius=2)
-        # im = vis.resize_img(im, 1000)
-        # vis.show(title="S_RandprevS",img=im)
-        # indices = self.find_most_similar_to_target_pose(pose_collection= self.S_list, \
+        # prev frame 
+        # priv_frame_S_prime := prev_frameS was transformed to S_r
+        prev_frame_S_prime = add_to_pts(combined_Rt[:3,:], prev_frame_S)     
+    
+       
         indices = self.find_most_similar_to_target_pose(pose_collection= self.S_list, \
-                                                            target_pose = prev_frame_S, \
+                                                            target_pose = prev_frame_S_prime, \
                                                             candidate_num=init_num )
         
-        # im = np.copy(img)
-        # for S in self.S_list:
-        #     rr = S
-        #     im = vis.draw_circle(proj(self.Q, np.eye(3,4), rr), im, (0,255,255))
-        #     vis.show("full_shapes", vis.resize_img(im,1000))
+       
+        # indices = self.find_most_similar_to_target_pose(pose_collection= self.S_init_list, \
+        #                                                     target_pose = prev_frame_S_prime, \
+        #                                                     candidate_num=init_num )
+        
+        im = np.copy(img)
+    
+        InvRt =TwoLevelBoostRegressor.inverse_Rt(combined_Rt[:3, :])
+
+
+        cvrt_cv_coord = functools.partial(geo.convert_to_cv_image_coord, image_height_size=h)
+        def custom_draw_circle(Rt, rr,img, color, radius = 1, resize = None ):
+            res =  vis.draw_circle(cvrt_cv_coord(proj(Q, Rt, rr)) , img, colors=color, radius=radius)
+            if resize is not None :
+                res = vis.resize_img(res, resize)
+            return res
+
+        
+
+
 
         # for ii in indices:
+        #     vis.set_delay(100)
         #     im = np.copy(img)
         #     im2 = np.copy(img)
+        #     im3 = np.copy(img)
         #     # rr = self.S_list[ii]
         #     rr = self.S_list[ii]
-        #     im = vis.draw_circle(res, im, (255,0,0), radius=1)
-        #     im = vis.draw_circle(proj(self.Q, np.eye(3,4), rr), im, (0,0,255), radius=1)
+            
+        #     im = vis.draw_circle(geo.convert_to_cv_image_coord(proj(Q, np.eye(3,4), rr), h), im, (255,0,0), radius=1)
+        #     im = vis.draw_circle(geo.convert_to_cv_image_coord(proj(Q, InvRt, rr), h), im, (255,255,0), radius=1)
         #     im = vis.resize_img(im,600)
-        #     im2 = vis.draw_circle(res, im2, (255,0,0), radius=1)
-        #     im2 = vis.draw_circle(proj(self.Q, InvRt, rr), im2, (0,255,255), radius=1)
-        #     imim = vis.concatenate_img(1,2, im,im2)
-        #     vis.show("candidate_yello", vis.resize_img(imim,1000))
+            
+        #     im3 = vis.draw_circle(geo.convert_to_cv_image_coord(proj(Q, np.eye(3,4), S_r), h), im3, (0,0,255), radius=1)
+        #     im3 = vis.resize_img(im3,600)
 
+        #     im2 = vis.draw_circle(geo.convert_to_cv_image_coord(proj(self.Q, np.eye(3,4), prev_frame_S_prime),h), im2, (0,255,255), radius=1)
+        #     im2 = vis.draw_circle(cvrt_cv_coord(proj(self.Q, np.eye(3,4), prev_frame_S)), im2, (0,0,255), radius=1)
+        #     im2 = vis.resize_img(im2,600)
+        #     imim = vis.concatenate_img(3,1, im,im3, im2)
+        #     vis.show("candidate_yello1", im)
+        #     vis.show("candidate_yello2", im3)
+        #     vis.show("candidate_yello3", im2)
 
+        # vis.set_delay(500)
         result = np.zeros_like(prev_frame_S)
-        InvRt =TwoLevelBoostRegressor.inverse_Rt(combined_Rt[:3, :])
-        #inverse checking
-        # aab = np.arange(1*3).reshape(-1,1)
-        # t_aab = add_to_pts(combined_Rt[:3,:], aab)
-        # print(add_to_pts(inv_RR[:3,:], t_aab))
-        # print(add_to_pts(InvRt[:3,:], t_aab))
-        inv_RR = InvRt
+
+        result_queue = []
+        iden = np.eye(3,4)
+        i = 0
         for l in indices:
-            cur_pose = np.copy(self.S_list[l])
-            # cur_pose = np.copy(S_init_list[l])
-            # im = vis.draw_circle(proj(self.Q, InvRt, cur_pose), img, (0,0,255), radius=1)
-            # cur_pose = np.concatenate([cur_pose, np.zeros((len(cur_pose), 1))], axis=-1)
-            # cur_pose = (new_Rt@cur_pose.T).T
-            # im = vis.draw_circle(proj(self.Q, combined_Rt[:3,:], cur_pose), im, (0,255,0))
-
-            # for weak_regressor in tqdm.tqdm(self.weak_regressors, "weak"):
-            for weak_regressor in self.weak_regressors:
-                # cur_pose = weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = InvRt, Q = self.Q)
-                cur_pose += weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = inv_RR[:3,:], Q = self.Q)
-                # pred = weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, predRt = combined_Rt[:3,:], Q = self.Q)
-                # cur_pose += pred 
-
-            # im = vis.draw_circle(proj(self.Q, InvRt, cur_pose), img, (255,255,0), radius=1)
-            # vis.show("test", vis.resize_img(im,1000))
-            result += cur_pose
+            # cur_pose = np.copy(self.S_list[l])
+            cur_pose = copy.deepcopy(self.S_list[l])
+            # cur_pose = copy.deepcopy(self.S_init_list[l])
+            i += 1 
+            ref_img = custom_draw_circle(InvRt, cur_pose, img=img, color=vis.RED, radius=3)
+            for wi, weak_regressor in enumerate(self.weak_regressors):
+                cur_pose += weak_regressor.predict(intensity_img, cur_pose, S_prime=prev_frame_S,mean_shape=self.mean_shape, Rtinv = InvRt[:3,:], Q = self.Q)
+                res_img = custom_draw_circle(InvRt, cur_pose, img=ref_img, color=vis.BLUE, radius=2, resize=800)
+                vis.put_text(res_img, str(i)+"th" + "weak : " + str(wi), color=vis.BLUE )
+                if debug : 
+                    vis.show("image", res_img)
+                
+                
+            
+            # Scale, R, trans_vec, scaled_combined_Rt,combined_Rt, inv_RR = similarity_transform2(cur_pose, prev_frame_S_no_rt)
+            # result += add_to_pts(combined_Rt[:3, :], cur_pose)
+            result += cur_pose 
+            result_queue.append(cur_pose)
         result = result / init_num
 
-        testing = proj(self.Q, InvRt, result)
-        pp = proj(self.Q, InvRt, result)
-        pp = geo.convert_to_cv_image_coord(pp, h)
-        im = vis.draw_circle(pp, img, (255,255,0), radius=1)
-        # im = vis.draw_circle(proj(self.Q, np.eye(3,4), result), im, (0,255,255), radius=1)
-        vis.show("result", vis.resize_img(im,1000))
+        def distance(x1):
+            return np.sum((add_to_pts(InvRt[:3, :], x1) - prev_frame_S_prime)**2)
+        
+        def distance2(x1, i):
+            return np.sum((add_to_pts(InvRt[:3, :], x1)[i, :] - prev_frame_S_prime[i, :])**2)
+        res= np.zeros((len(clmk_idx),3), dtype=np.float64)
 
-        # return result, scaled_combined_Rt[:3, :]
-        return result, inv_RR[:3,:]
-                
+
+        def calc_axis_base_median(results_list, num=15):
+        #  https://yichenwei.github.io/publications/CVPR12_FaceAlignment.pdf
+        #     6 The median operation is performed on x and y coordinates of all
+        #     landmarks individually. Although this may violate the shape constraint
+        #     mentioned before, the resulting median shape is mostly correct as in
+        #     most cases the multiple results are tightly clustered. We found such a
+        #     simple median based fusion is comparable to more sophisticated strategies such as weighted combination of input shapes
+
+        # WTF? 이게 된다고..?
+
+            res = np.array(results_list)#IN, K, 3
+            I, K, _ = res.shape
+            result = np.zeros((K, 3), dtype=np.float64)
+            idx = math.ceil(num/2)
+            for i in range(K):
+                s = np.squeeze(res[:, i, :]) #IN, 3
+                x = sorted(s[:, 0].reshape(-1))[idx]
+                y = sorted(s[:, 1].reshape(-1))[idx]
+                z = sorted(s[:, 2].reshape(-1))[idx]
+                result[i, :] = x, y, z
+
+            return result
+
+        
+        for i in range(len(clmk_idx)):
+            ff = functools.partial(distance2, i = i)
+            res[i, : ] = list(sorted(result_queue, key = ff))[math.ceil(init_num/2)][i, :]
+
+        data = list(sorted(result_queue, key = distance))
+
+        aaa =list(map(distance, data))
+        
+        # result_all_l2_distance = data[math.ceil(init_num/2)] # 8-th object in 15 items is meadian
+        result_all_l2_distance = data[0] # 8-th object in 15 items is meadian
+        result_meadian_for_individual_pts = res
+
+        im2 = np.copy(img)
+        result_all_l2_distance2d = geo.convert_to_cv_image_coord(proj(Q, InvRt, result_all_l2_distance), h )
+        result_meadian_for_individual_pts2d = geo.convert_to_cv_image_coord(proj(Q, InvRt, result_meadian_for_individual_pts), h)
+        im2 = vis.draw_circle(result_all_l2_distance2d, im2, (255,0,0), radius=4)
+        im2 = vis.draw_circle(result_meadian_for_individual_pts2d, im2, (0,0,255), radius=3)
+        vis.put_text(im2, "red : median norm distance", color=vis.RED)
+        vis.put_text(im2, "blue : median individual pts", color=vis.BLUE, base_loc=(0, 10))
+        if debug :
+            vis.show("double", vis.resize_img(im2,1000))
+        # im = vis.resize_img(im,600)
+        # imim = vis.concatenate_img(1,2, im,im2)
+        # result = result_all_l2_distance
+        # result = result_meadian_for_individual_pts
+        result = result
+        result = calc_axis_base_median(result_queue)
+        # result = np.mean(result_queue, axis=0)
+        result = add_to_pts(InvRt[:3, :], result)
+
+        
+
+
+        return result
+                 
             
 
 def load_data_train(path, start = None, end = None, lmk_indices = None, desired_img_width = None):
@@ -2129,12 +1841,36 @@ def get_kinect_Q():
     Q = np.array([[focal_length_x,0,principal_x],[0,focal_length_y,principal_y],[0,0,1]], dtype=np.float64)
     return Q
 if __name__ == "__main__":
+
+
+    
+    import igl ,argparse
+    import os.path as osp
+    parser = argparse.ArgumentParser(description='parser')
+
+
+
+    parser.add_argument( '--train_data_root_dir', type=str, default="./train_dataset" )
+    parser.add_argument( '--train_data_name', type=str, default="data" )
+    parser.add_argument( '--save_dir', type=str, default="./pretrain_model" )
+    parser.add_argument( '--name', type=str, default="train1" )
+    parser.add_argument( '--output_name', type=str, default= "video.avi" )
+
+    args    = parser.parse_args()
+
+    data_path = osp.join(args.train_data_root_dir, args.train_data_name)
+    model_path = osp.join(args.save_dir, args.name)
+
+
+
+
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", start=0, end=5, desired_img_width=800, lmk_indices=lmk_without_contour_idx)
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=800, lmk_indices=lmk_without_contour_idx)
     # new_indices = list(range(lmk_without_contour_idx[0], len(regression_inner_contour_indices)+len(lmk_idx)))
     # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./cd_test/", desired_img_width=640)
     # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./kinect_dataset/")
-    Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./kinect_test_dataset/")
+    # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./kinect_test_dataset/")
+    Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train(data_path)
     # Q, data, Ss, S_original, Rt_invs, resize_ratio = load_data_train("./cd_test/")
     # Q, data, Ss, Rt_invs = load_data_train("./cd_test/", start=-4, end=-1)
     # Q, data, Ss, Rt_invs, resize_ratio = load_data_train("./cd_test/", lmk_indices=lmk_without_contour_idx)
@@ -2185,11 +1921,12 @@ if __name__ == "__main__":
     #     vis.set_delay(100)
     #     vis.show("test", im)
 
-    import igl 
-    import os.path as osp
+     
     regression_inner_contour_indices = np.load(osp.join("./predefined_face_weight", "regression_contour.npy"))
 
     neutral_v, _ = igl.read_triangle_mesh("data/generic_neutral_mesh.obj")
+
+
     multithread_flag = True
     # lmk_idx = np.array(lmk_idx, dtype=np.uint)[lmk_without_contour_idx] #TODO
     lmk_new_idx = np.array(lmk_idx, dtype=np.uint)[lmk_without_contour_idx]
@@ -2199,11 +1936,12 @@ if __name__ == "__main__":
     neutral_v = neutral_v[lmk_new_idx, :]
     # reg = TwoLevelBoostRegressor(Q = Q,Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
     # reg = TwoLevelBoostRegressor(Q = Q,beta=250,   Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data,P=400)
-    reg = TwoLevelBoostRegressor(Q = Q,beta=0, Ss=Ss, S_original = S_original, neutral_v=neutral_v, data=data,P=100)
+    reg = TwoLevelBoostRegressor(Q = Q,beta=250, Ss=Ss, S_original = S_original, neutral_v=neutral_v, data=data,P=400)
     # reg = TwoLevelBoostRegressor(Q = Q,T=10, K=10,beta=1000, Ss=Ss, S_original = S_original, nuetral_v=neutral_v, data=data)
-    reg.set_save_path("./fern_pretrained_data")
+    # reg.set_save_path("./fern_pretrained_data/0.1")
+    reg.set_save_path(model_path)
     reg.train(data, neutral_v, Ss, Rt_invs)
-    reg.load_model("./fern_pretrained_data")
+    reg.load_model(model_path, data)
     prev_data = None 
     prev_data = add_to_pts( Rt_invs[data[0]['Rt_inv_index']], Ss[data[0]['S_index']])
     ida= np.eye(3,4)
@@ -2215,21 +1953,20 @@ if __name__ == "__main__":
 
     # vis.show("default", frame)
 
-    result = []
-    prev_data = None
-    # prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
-    result.append(prev_data)
-    for i in range(100):
+    # result = []
+    # prev_data = None
+    # # prev_data  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
+    # result.append(prev_data)
+    # for i in range(100):
         
-        prev_data2  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data)
-        result.append(prev_data2)
-        prev_data = prev_data2
-        dt = proj(Q, ida, prev_data)
-        dt = geo.convert_to_cv_image_coord(dt, h)
+    #     prev_data2  = reg.predict(data[0]['color_img'], render = True, lmk_idx = lmk_new_idx, prev_data=prev_data,  Q = Q )
+    #     result.append(prev_data2)
+    #     prev_data = prev_data2
+    #     dt = proj(Q, ida, prev_data)
+    #     dt = geo.convert_to_cv_image_coord(dt, h)
         
-        frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
-        vis.show("VideoFrame", frame)
-    # print(result)
+    #     frame = vis.draw_circle(dt, data[0]['color_img'], colors=(0,0,255), radius=1, thickness=3)
+    # #     vis.show("VideoFrame", frame)
     capture = cv2.VideoCapture(0)
     capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
     capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
@@ -2237,21 +1974,47 @@ if __name__ == "__main__":
     ida= np.eye(3,4)
     #https://www.researchgate.net/figure/Kinect-camera-intrinsic-parameters-the-resolution-and-sensor-size-information-from-36_tbl1_321354490
     
-    while cv2.waitKey(33) < 0:
+    def video_generator(folder_path, file_name, size, fps, img_array):
+        h, w , *_ = img_array[0].shape
+        fourcc = cv2.VideoWriter_fourcc(*'DIVX')
+
+        pth = os.path.join(folder_path, file_name)
+        out = cv2.VideoWriter(filename=pth, fourcc=fourcc , fps=fps, frameSize =(w,h))
+        for i, img in enumerate(img_array):
+            root_logger.info("log + i : " + str(i))
+            out.write(img)
+
+        out.release()
+    frames = []
+    vis.set_delay(1)
+    # capture = cv2.VideoCapture('video/face1.mp4')
+    capture = cv2.VideoCapture('video/face9.mp4')
+    # 비디오 프레임 크기, 전체 프레임수, FPS 등 출력
+    print('Frame width:', int(capture.get(cv2.CAP_PROP_FRAME_WIDTH)))
+    print('Frame height:', int(capture.get(cv2.CAP_PROP_FRAME_HEIGHT)))
+    print('Frame count:', int(capture.get(cv2.CAP_PROP_FRAME_COUNT)))
+
+    fps = capture.get(cv2.CAP_PROP_FPS)
+    print('FPS:', fps)
+    while capture.isOpened():
         ret, frame = capture.read()
-        # frame = vis.resize_img(frame, 640)
-        prev_data2 = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q)
-        
+        if not ret :
+            break 
+        prev_data2 = reg.predict(frame, prev_data=prev_data, lmk_idx = lmk_new_idx, Q = Q,debug=False)# debug=True)
         prev_data = prev_data2
         dt = proj(Q, ida, prev_data2)
         h, w, _ = frame.shape
         dt = geo.convert_to_cv_image_coord(dt, h)
         frame = vis.draw_circle(dt, frame, colors=(0,0,255), radius=1, thickness=3)
-        cv2.imshow("VideoFrame", frame)
+        frames.append(frame)
+        # cv2.imshow("VideoFrame", frame)
 
     capture.release()
     cv2.destroyAllWindows()
-    reg.predict(data[-1]['color_img'], render = True, lmk_idx = lmk_new_idx)   
+    if not os.path.exists("./out"):
+        os.makedirs("./out")
+    # video_generator("./out", "test5.avi",len(frames) , 24, frames)
+    video_generator("./out", args.output_name,len(frames) , 24, frames)
 
 
 #      We set κ equal to 0.3 times of

@@ -4,9 +4,11 @@ import copy
 import glm
 
 
-RED = np.array([0,0,255])
-BLUE = np.array([255,0,0])
-GREEN = np.array([0,255,0])
+RED = (0,0,255)
+BLUE = (255,0,0)
+GREEN = (0,255,0)
+YELLO = (0,255,255)
+SKY_BLUE = (255,255,0)
 
 
 

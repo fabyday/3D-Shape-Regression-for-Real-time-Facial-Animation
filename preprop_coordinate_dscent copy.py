@@ -885,7 +885,7 @@ class PreProp:
                     cost_list.append(costv)
                 plt.plot(test_list, cost_list, 'b-')
                 mins = (-1, np.inf)
-                plt.show()
+                # plt.show()
                 for fx, cost in zip(test_list, cost_list):
                     if cost < mins[-1]:
                         mins = (fx, cost)
@@ -1870,7 +1870,7 @@ class PreProp:
 
 
 
-    def generate_train_data(self , G = 5, H = 4):
+    def generate_train_data(self , G = 5, H = 4, augmented_data_disp_length = 1.45):
         """
             make translate 
         """
@@ -1962,23 +1962,46 @@ class PreProp:
             # cimg = vis.resize_img(cimg, 1000)
             # vis.show("ti", cimg)
 
+            def random_disp_function():
+                return 1 #this is length between eyes.
+                # return abs(np.random.uniform(0.1, 10))
+
+            # length_btw_eyes = 4.5
+            # length_btw_eyes = 1.4555
+            # length_btw_eyes = 0.1
+            length_btw_eyes = augmented_data_disp_length
+
             for command in tqdm.tqdm(["x,y,z", "x,y,-z", "x,-y,z", "x,-y,-z","-x,y,z", "-x,y,-z","-x,-y,z","-x,-y,-z"]):
                 x = 0
                 y = 0
                 z = 0
                 x_flag, y_flag, z_flag = command.split(",")
                 while True : 
-                    x = abs(np.random.uniform(0.1, 10))
+                    x = random_disp_function()
                     if x_flag == "-x":
                         x = -1.0*x
                     
-                    y = abs(np.random.uniform(0.1, 10))
+                    y = random_disp_function()
                     if y_flag == "-y":
                         y = -1.0*y
 
-                    z = abs(np.random.uniform(0.1, 10))
+                    z = random_disp_function()
                     if z_flag == "-z":
                         z = -1.0*z
+
+                    # TODO for testing
+                    # make it L2 distance 
+                    a = np.array([x,y,z])
+                    x /= np.linalg.norm(a)
+                    y /= np.linalg.norm(a)
+                    z /= np.linalg.norm(a)
+                    x *= length_btw_eyes
+                    y *= length_btw_eyes
+                    z *= length_btw_eyes
+
+
+
+                    
                     Rt = np.eye(3,4,dtype=np.float32)
                     Rt_inv = np.eye(3,4,dtype=np.float32)
                     scaled_x = x
@@ -2027,7 +2050,7 @@ class PreProp:
 
 
 
-        def find_great_similarityGH_from_dataset(dataset, data, G, H):
+        def find_great_similarityGH_from_dataset(dataset, data, G, H, i_group_idx = -1 , j_group_idx = -1 ):
             """
                 dataset : 2-d python array
             """
@@ -2037,7 +2060,11 @@ class PreProp:
             centered_S_ij = S_ij - S_ij_center
             losses_between_picked_pose_n_original_pose = []
             for orig_index_i, data_S_o in enumerate(dataset) :
-                S_i_o = data_S_o[0]['S']
+                #TODO test
+                # if i_group_idx == orig_index_i : # if same igroup then exclude this data.
+                    # continue 
+
+                S_i_o = data_S_o[0]['S'] # original shape
                 # Rt = data_S_o[0]['Rt_inv']
                 # S_i_o = add_rt(Rt, S_i_o)
                 S_i_o_center = np.mean(S_i_o, axis=0, keepdims= True)
@@ -2066,8 +2093,22 @@ class PreProp:
                 # ab = vis.concatenate_img(1,2, a,b)
                 # vis.show("test", ab)
                 #without original shapes(data consist of only augmented step )
-                igrup_indice = list(range(1, len(ith_datagroup)))
+
+
+                igrup_indice = list(range(0, len(ith_datagroup)))
+                # poped_ = False 
+                # if i_group_idx == iG:
+                #     if not j_group_idx == -1 :
+                #         poped_item = igrup_indice.pop(j_group_idx)
+                #         poped_ = True 
+
+                # if poped_:
+                #     samples += map(lambda col_idx : (iG, col_idx) , random.sample(igrup_indice, k=H - 1)) # weight is same. no dups
+                #     samples.append((iG, poped_item))
+                # else : 
+                    # samples += map(lambda col_idx : (iG, col_idx) , random.sample(igrup_indice, k=H)) # weight is same. no dups
                 samples += map(lambda col_idx : (iG, col_idx) , random.sample(igrup_indice, k=H)) # weight is same. no dups
+
 
             return samples
 
@@ -2076,7 +2117,7 @@ class PreProp:
         # select similar init pose and random init pose(G and H)
         for i, i_group_data_list  in enumerate(result_data):
             for j, data in enumerate(i_group_data_list):
-                GH_list = find_great_similarityGH_from_dataset(result_data, data, G, H)
+                GH_list = find_great_similarityGH_from_dataset(result_data, data, G, H, i, j)
                 # data["S_init"] = [GH_item['S'] for GH_item in GH_list]
                 data["S_init"] = [GH_item for GH_item in GH_list]
 
@@ -2195,20 +2236,23 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description='parser')
 
-    parser.add_argument( '--save_dir', type=str, default="./cd_test" )
     parser.add_argument( '--predef_dir', type=str, default="./cd_test" )
-    # parser.add_argument( '--predefined_data', type=str, default="./cd_test" )s
+    parser.add_argument( '--save_dir', type=str, default="./train_dataset" )
+    parser.add_argument( '--name', type=str, default="data1" )
+    parser.add_argument( '--aug_length', type=float, default= 1.45 )
 
     args    = parser.parse_args()
+     
     # p = PreProp("landmark/meta.yaml", "prep_data")
     p = PreProp("landmark/KINENCT_DARK/meta.yaml", "prep_data")
     p.build()
     print(len(lmk_idx))
     # p.set_save_root_directory("./cd_test") # for gopro
     # p.set_save_root_directory("./kinect_dataset")
-    p.set_save_root_directory("./kinect_test_dataset")
+
+    p.set_save_root_directory(os.path.join(args.save_dir, args.name))
     # p.simple_camera_calibration(p.images[0], p.lmks[0], p.meshes[0][0], lmk_idx)
     p.shape_fit(p.id_meshes, p.expr_meshes, lmk_idx, False)
     p.extract_train_set_blendshapes()
-    p.generate_train_data()
+    p.generate_train_data(augmented_data_disp_length=args.aug_length)
  
